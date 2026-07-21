@@ -1,0 +1,41 @@
+{
+    "userId": "KCONG",
+    "firstName": "Kiet",
+    "lastName": "Cong",
+    "organization": "2196045",
+    "commercialName": "CREATE_ACT_ORDER_66",
+    "accountId": "",
+    "orderId": "",
+    "email": "kiet.cong@congerotechnology.com",
+    "country": "USA",
+    "landmark": "",
+    "state": "CA",
+    "extraLine": "test",
+    "postalCode": "90001",
+    "city": "Los Angeles",
+    "street": "Cali street 123",
+    "orderType": "NEW",
+    "district": "test district",
+    "neighbourhood": "Cali neighbourhood",
+    "billingOnlyFlag": "true",
+    "accounttype": "RESIDENTIAL",
+    "groupid": "152355",
+    "staticIpRented": "true",
+    "identity": "502210226",
+    "identityDocument": "ID Card",
+    "phone": "3107771234",
+    "paymentProfiles": [
+        {
+            "paymentMethod": "CHECK"
+        }
+    ],
+    "services": [
+        {
+            "bundleId": "BDL_INT_100MBPS",
+            "packageId": "",
+            "serviceType": "INTERNET",
+            "action": "ADD",
+            "quantity": "1"
+        }
+    ]
+}
