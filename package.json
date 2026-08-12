@@ -11,10 +11,15 @@
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@types/node": "^26.1.1",
+    "@types/pg": "^8.20.3",
     "dotenv": "^17.4.2"
   },
   "allowScripts": {
     "@types/node@26.1.1": true,
-    "dotenv@17.4.2": true
+    "dotenv@17.4.2": true,
+    "fsevents@2.3.2": true
+  },
+  "dependencies": {
+    "pg": "^8.22.0"
   }
 }
