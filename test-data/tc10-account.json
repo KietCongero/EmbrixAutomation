@@ -33,8 +33,22 @@
     ],
     "services": [
         {
-            "bundleId": "BDL_INT_100MBPS",
-            "packageId": "",
+            "bundleId": "BDL_TV_PREM",
+            "packageId": "PKG_TVPREM_TELANAG",
+            "serviceType": "IPTV",
+            "action": "ADD",
+            "quantity": "1"
+        },
+        {
+            "bundleId": "BDL_TELANAG",
+            "packageId": "PKG_TVPREM_TELANAG",
+            "serviceType": "VOIP",
+            "action": "ADD",
+            "quantity": "1"
+        },
+        {
+            "bundleId": "BDL_INT_IPTV",
+            "packageId": "PKG_TVPREM_TELANAG",
             "serviceType": "INTERNET",
             "action": "ADD",
             "quantity": "1"

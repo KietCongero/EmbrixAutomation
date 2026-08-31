@@ -28,9 +28,26 @@ test('TC-01 - create account and verify incomplete order', async ({ request, pag
         data: payload,
     });
 
-    const responseBody = await response.json();
+    const responseText = await response.text();
 
-    expect(response.ok()).toBeTruthy();
+    console.log('Response status:', response.status());
+    console.log('Response body:', responseText);
+
+    expect(
+        response.ok(),
+        `API failed with ${response.status()}: ${responseText}`
+    ).toBeTruthy();
+
+    let responseBody;
+
+    try {
+        responseBody = JSON.parse(responseText);
+    } catch {
+        throw new Error(
+            `API returned non-JSON content: ${responseText.slice(0, 500)}`
+        );
+    }
+
     expect(responseBody).toEqual({
         accountId: ACCOUNT_ID,
         orderId: ORDER_ID,
