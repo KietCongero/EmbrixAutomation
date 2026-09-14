@@ -1,13 +1,14 @@
 import { test, expect } from '@playwright/test';
 
 test('login for recording', async ({ page }) => {
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
-    const accountId = '9000106';
+    const username = process.env.OCI_USERNAME;
+    const password = process.env.OCI_PASSWORD;
+    const accountId = 'TEST1111';
 
     if (!username || !password) throw new Error('Missing username or password');
 
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    //await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('https://core-ui.oc-congero.embrix.org/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
