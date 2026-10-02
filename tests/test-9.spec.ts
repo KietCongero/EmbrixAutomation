@@ -228,19 +228,22 @@ test('create account, create order, manually provision, and activate service', a
     // 6. ADD INTERNET PROVISIONING DATA
     // ============================================================
 
-    console.log('Opening INTERNET provisioning bundle...');
+    console.log('Opening TV ESTANDAR INDIVIDUAL provisioning bundle...');
 
     await page.getByRole('heading', { name: 'Service Type: INTERNET' }).click();
 
-    await expect(
-        page.getByRole('cell', {
-            name: 'Internet IPTV',
+    const internetBundleRow = page.getByRole('row').filter({
+        has: page.getByRole('cell', {
+            name: 'TV ESTANDAR INDIVIDUAL',
             exact: true,
-        })
-    ).toBeVisible();
+        }),
+    });
 
-    await page.getByRole('cell', { name: 'Internet IPTV', exact: true }).click();
-    await page.getByRole('button', { name: 'View' }).nth(2).click();
+    await expect(internetBundleRow).toBeVisible();
+
+    console.log('PASS: TV ESTANDAR INDIVIDUAL bundle found');
+
+    await internetBundleRow.getByRole('button', { name: 'View' }).click();
 
     console.log('Adding ONT provisioning information...');
 
@@ -272,8 +275,9 @@ test('create account, create order, manually provision, and activate service', a
     await page.getByRole('button', { name: 'Submit', exact: true }).click();
     await page.getByRole('button', { name: 'Next' }).first().click();
 
-    console.log(`PASS: INTERNET provisioning added - ${provisioningId} / ${ontModel}`);
-
+    console.log(
+        `PASS: TV ESTANDAR INDIVIDUAL provisioning added - ${provisioningId} / ${ontModel}`
+    );
     // ============================================================
     // 7. CREATE ORDER
     // ============================================================

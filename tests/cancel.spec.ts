@@ -1,51 +1,114 @@
 import { test, expect } from '@playwright/test';
 import { ACCOUNT_ID } from '../test-data/testIds';
 
-
 test('cancel active subscription', async ({ page }) => {
-    test.setTimeout(2 * 60 * 1000);
+    test.setTimeout(3 * 60 * 1000);
 
     const username = process.env.EMBRIX_USERNAME;
     const password = process.env.EMBRIX_PASSWORD;
-
-    const accountId = ACCOUNT_ID;
+    const accountId = String(Number(ACCOUNT_ID) - 1);
 
     if (!username || !password) throw new Error('Missing username or password');
+
+    const openCustomerServices = async () => {
+        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.getByRole('button', { name: 'Customer Hub' }).click();
+        await page.getByRole('link', { name: 'Customer Management' }).first().click();
+
+        const search = page.locator('.form-group').first().getByRole('textbox');
+        await search.fill(accountId);
+
+        await page.getByRole('button', { name: 'Search', exact: true }).click();
+        await page.getByRole('link', { name: accountId, exact: true }).click();
+
+        console.log(`PASS: Account ${accountId} opened`);
+
+        await page.locator('a').filter({ hasText: 'Subscription Data' }).click();
+        await page.locator('a').filter({ hasText: 'Assets' }).click();
+        await page.getByRole('link', { name: ' Services' }).click();
+
+        console.log('PASS: Customer Services opened');
+    };
+
+    const clickRefresh = async (label: string) => {
+        const refreshButton = page.getByRole('button', { name: 'Refresh' });
+        await expect(refreshButton).toBeVisible({ timeout: 15000 });
+        await refreshButton.click();
+        console.log(`PASS: ${label} - Refresh clicked`);
+        await page.waitForTimeout(3000);
+    };
+
+    const clickSubmitOrder = async (label: string) => {
+        const submitButton = page.getByRole('button', { name: 'Submit order', exact: true });
+
+        for (let attempt = 1; attempt <= 6; attempt++) {
+            console.log(`${label}: checking Submit order ${attempt}/6`);
+
+            if (await submitButton.isVisible().catch(() => false)) {
+                await submitButton.scrollIntoViewIfNeeded();
+
+                if (await submitButton.isEnabled().catch(() => false)) {
+                    await submitButton.click();
+                    console.log(`PASS: ${label} - Submit order clicked`);
+                    await page.waitForTimeout(3000);
+                    return;
+                }
+            }
+
+            await page.waitForTimeout(3000);
+        }
+
+        throw new Error(`${label}: Submit order button was not available`);
+    };
 
     await page.goto('https://core-ui.demo.embrix.org/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page).toHaveURL(/\/dashboard\/me\/?$/);
 
-    await page.getByRole('button', { name: 'Customer Hub' }).click();
-    await page.getByRole('link', { name: 'Customer Management' }).first().click();
+    console.log('PASS: Login successful');
 
-    const search = page.locator('.form-group').first().getByRole('textbox');
+    await openCustomerServices();
 
-    await search.fill(accountId);
-    await page.getByRole('button', { name: 'Search', exact: true }).click();
-    await page.getByRole('link', { name: accountId, exact: true }).click();
+    console.log('Opening cancellation...');
 
-    await page.locator('a').filter({ hasText: 'Subscription Data' }).click();
-    await page.locator('a').filter({ hasText: 'Assets' }).click();
-    await page.getByRole('link', { name: ' Services' }).click();
-
-    //await page.getByRole('cell', { name: 'ACTIVE', exact: true }).first().click();
     await page.getByRole('link', { name: 'Cancel', exact: true }).click();
     await page.getByRole('button', { name: 'Create', exact: true }).click();
-    await page.getByRole('button', { name: 'Submit order' }).click();
 
-    await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/services`);
+    console.log('PASS: Cancel order created');
 
-    for (let i = 0; i < 10; i++) {
-        await page.waitForTimeout(5000);
-        await page.getByRole('button', { name: 'Refresh' }).click();
+    await clickRefresh('Cancel order creation');
+    await clickSubmitOrder('Cancel order creation');
 
-        if (await page.getByRole('cell', { name: 'CLOSED', exact: true }).first().isVisible().catch(() => false)) {
-            console.log('PASS: Subscription cancelled');
+    console.log('Returning to customer services...');
+
+    await openCustomerServices();
+
+    await clickSubmitOrder('Incomplete cancel order');
+    await clickRefresh('Incomplete cancel order');
+
+    console.log('Waiting for subscription to become CLOSED...');
+
+    for (let attempt = 1; attempt <= 10; attempt++) {
+        console.log(`Checking CLOSED status ${attempt}/10`);
+
+        const closedStatus = page.getByRole('cell', { name: 'CLOSED', exact: true }).first();
+
+        if (await closedStatus.isVisible().catch(() => false)) {
+            console.log(`PASS: Subscription for ${accountId} cancelled`);
             return;
+        }
+
+        await page.waitForTimeout(5000);
+
+        const refreshButton = page.getByRole('button', { name: 'Refresh' });
+
+        if (await refreshButton.isVisible().catch(() => false)) {
+            await refreshButton.click();
+            await page.waitForTimeout(2000);
         }
     }
 
-    throw new Error('Subscription never reached CLOSED');
+    throw new Error(`Subscription for ${accountId} never reached CLOSED`);
 });

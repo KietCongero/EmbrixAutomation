@@ -11,6 +11,10 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
 
     if (!username || !password) throw new Error('Missing username or password');
 
+    // ============================================================
+    // OPEN ACCOUNT
+    // ============================================================
+
     const openAccount = async () => {
         await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
         await page.getByRole('button', { name: 'Customer Hub' }).click();
@@ -21,7 +25,13 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
         await accountSearch.fill(accountId);
         await page.getByRole('button', { name: 'Search', exact: true }).click();
         await page.getByRole('link', { name: accountId, exact: true }).click();
+
+        console.log(`PASS: Account ${accountId} opened`);
     };
+
+    // ============================================================
+    // GET NEXT PENDING BILL
+    // ============================================================
 
     const getNextPendingBill = async () => {
         await openAccount();
@@ -29,18 +39,13 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
         await page.locator('a').filter({ hasText: 'Billing Data' }).click();
         await page.getByRole('link', { name: ' Bills' }).click();
 
-        console.log('Looking for next pending bill...');
+        console.log('Looking for next PENDING bill...');
 
-        const pendingBillRow = page
-            .getByRole('row')
-            .filter({ has: page.getByRole('cell', { name: 'PENDING', exact: true }) })
-            .first();
+        const pendingBillRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'PENDING', exact: true }) }).first();
 
         await expect(pendingBillRow).toBeVisible();
 
-        const dateCells = pendingBillRow
-            .getByRole('cell')
-            .filter({ hasText: /^\d{4}-\d{2}-\d{2}$/ });
+        const dateCells = pendingBillRow.getByRole('cell').filter({ hasText: /^\d{4}-\d{2}-\d{2}$/ });
 
         await expect(dateCells.nth(0)).toBeVisible();
         await expect(dateCells.nth(1)).toBeVisible();
@@ -50,48 +55,37 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
 
         console.log(`PASS: Pending bill found ${startDate} -> ${endDate}`);
 
-        return {
-            startDate,
-            endDate,
-            jobDate: endDate,
-        };
+        return { startDate, endDate, jobDate: endDate };
     };
+
+    // ============================================================
+    // CLEAN JOBS
+    // ============================================================
 
     const cleanJobs = async (targetDate: string) => {
         console.log(`Cleaning jobs for ${targetDate}...`);
 
-        const jobs = await queryDatabase(`
-            SELECT *
-            FROM core_engine.job_schedule
-            WHERE scheduledate = $1
-        `, [targetDate]);
+        const jobs = await queryDatabase(`SELECT * FROM core_engine.job_schedule WHERE scheduledate = $1`, [targetDate]);
 
         console.log(`Found ${jobs.length} job(s) for ${targetDate}`);
 
         for (const job of jobs) {
-            await queryDatabase(`
-                DELETE FROM core_engine.job_schedule_list
-                WHERE id = $1
-            `, [job.id]);
-
-            await queryDatabase(`
-                DELETE FROM core_engine.job_schedule
-                WHERE id = $1
-            `, [job.id]);
+            await queryDatabase(`DELETE FROM core_engine.job_schedule_list WHERE id = $1`, [job.id]);
+            await queryDatabase(`DELETE FROM core_engine.job_schedule WHERE id = $1`, [job.id]);
 
             console.log(`PASS: Deleted job ${job.id}`);
         }
 
-        const remainingJobs = await queryDatabase(`
-            SELECT *
-            FROM core_engine.job_schedule
-            WHERE scheduledate = $1
-        `, [targetDate]);
+        const remainingJobs = await queryDatabase(`SELECT * FROM core_engine.job_schedule WHERE scheduledate = $1`, [targetDate]);
 
         expect(remainingJobs.length, `Jobs still exist for ${targetDate}`).toBe(0);
 
         console.log(`PASS: No jobs remain for ${targetDate}`);
     };
+
+    // ============================================================
+    // SET CCP TIME
+    // ============================================================
 
     const setCcpTime = async (targetDate: string) => {
         console.log(`Changing CCP time to ${targetDate}...`);
@@ -101,8 +95,7 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
         const mutation = `mutation {
   setCcpTime(input: {
     ccpTime: "${targetDate}"
-  })
-  {
+  }) {
     ccpTime
   }
 }`;
@@ -120,12 +113,14 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
         await page.waitForTimeout(1000);
         await page.getByRole('button', { name: 'Execute Query (Ctrl-Enter)' }).click();
 
-        await expect(
-            page.locator('pre').filter({ hasText: `"ccpTime": "${targetDate}"` })
-        ).toBeVisible();
+        await expect(page.locator('pre').filter({ hasText: `"ccpTime": "${targetDate}"` })).toBeVisible();
 
         console.log(`PASS: CCP time changed to ${targetDate}`);
     };
+
+    // ============================================================
+    // RUN DAILY BILLING JOB
+    // ============================================================
 
     const runDailyJob = async (targetDate: string) => {
         console.log(`Running DAILY jobs for ${targetDate}...`);
@@ -198,17 +193,18 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
         }
 
         if (!invoiceFinished) {
-            console.log(`WARNING: INVOICE_CHECK did not reach COMPLETED or ERROR after 20 attempts for ${targetDate}`);
+            console.log(`WARNING: INVOICE_CHECK did not finish after 20 attempts for ${targetDate}`);
             console.log('Continuing to bill verification...');
         }
 
         console.log(`Final INVOICE_CHECK status: ${invoiceStatus || 'UNKNOWN'}`);
     };
 
-    const verifyBill = async (
-        startDate: string,
-        endDate: string
-    ) => {
+    // ============================================================
+    // VERIFY GENERATED BILL
+    // ============================================================
+
+    const verifyBill = async (startDate: string, endDate: string) => {
         await openAccount();
 
         await page.locator('a').filter({ hasText: 'Billing Data' }).click();
@@ -216,29 +212,33 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
 
         console.log(`Checking generated bill ${startDate} -> ${endDate}...`);
 
-        const generatedBillRow = page
-            .getByRole('row')
-            .filter({ hasText: startDate })
-            .filter({ hasText: endDate })
-            .filter({ hasText: 'STAMPED' })
-            .first();
+        let generatedBillRow = page.getByRole('row').filter({ hasText: startDate }).filter({ hasText: endDate }).filter({ hasText: 'STAMPED' }).first();
 
-        await page.waitForTimeout(2000);
-        await page.reload();
+        for (let attempt = 1; attempt <= 10; attempt++) {
+            if (await generatedBillRow.isVisible().catch(() => false)) break;
 
-        await expect(generatedBillRow).toBeVisible();
+            console.log(`STAMPED bill not found yet: ${attempt}/10`);
 
-        const generatedDateCells = generatedBillRow
-            .getByRole('cell')
-            .filter({ hasText: /^\d{4}-\d{2}-\d{2}$/ });
+            await page.reload();
+            await page.waitForTimeout(5000);
+
+            generatedBillRow = page.getByRole('row').filter({ hasText: startDate }).filter({ hasText: endDate }).filter({ hasText: 'STAMPED' }).first();
+        }
+
+        await expect(generatedBillRow, `Could not find STAMPED bill ${startDate} -> ${endDate}`).toBeVisible();
+
+        const generatedDateCells = generatedBillRow.getByRole('cell').filter({ hasText: /^\d{4}-\d{2}-\d{2}$/ });
 
         await expect(generatedDateCells.nth(0)).toHaveText(startDate);
         await expect(generatedDateCells.nth(1)).toHaveText(endDate);
 
-        console.log(`PASS: Generated bill found ${startDate} -> ${endDate}`);
+        console.log(`PASS: Generated STAMPED bill found ${startDate} -> ${endDate}`);
     };
 
+    // ============================================================
     // LOGIN
+    // ============================================================
+
     await page.goto('https://core-ui.demo.embrix.org/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
@@ -248,54 +248,49 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
 
     console.log('PASS: Login successful');
 
-    // GET NEXT PENDING BILL
+    // ============================================================
+    // 1. GET NEXT PENDING BILL
+    // ============================================================
+
     const pendingBill = await getNextPendingBill();
 
-    console.log('========================================');
-    console.log(`Pending start: ${pendingBill.startDate}`);
-    console.log(`Pending end:   ${pendingBill.endDate}`);
-    console.log(`Job date:      ${pendingBill.jobDate}`);
-    console.log('========================================');
+    console.log('================================================');
+    console.log(`Pending Bill: ${pendingBill.startDate} -> ${pendingBill.endDate}`);
+    console.log(`Billing Job Date: ${pendingBill.jobDate}`);
+    console.log('================================================');
 
-    // CLEAN EXISTING JOBS FOR PENDING BILL END DATE
+    // ============================================================
+    // 2. CLEAN EXISTING JOBS
+    // ============================================================
+
     await cleanJobs(pendingBill.jobDate);
 
-    // MOVE CCP DATE TO PENDING BILL END DATE
+    // ============================================================
+    // 3. MOVE CCP TIME
+    // ============================================================
+
     await setCcpTime(pendingBill.jobDate);
 
-    // RUN DAILY BILLING JOB
+    // ============================================================
+    // 4. RUN BILLING
+    // ============================================================
+
     await runDailyJob(pendingBill.jobDate);
-    await page.waitForTimeout(2000);
 
-    // VERIFY THAT PENDING PERIOD BECAME A GENERATED BILL
-    await verifyBill(
-        pendingBill.startDate,
-        pendingBill.endDate
-    );
+    // ============================================================
+    // 5. VERIFY BILL
+    // ============================================================
 
-    console.log('========================================');
+    await verifyBill(pendingBill.startDate, pendingBill.endDate);
+
+    // ============================================================
+    // DONE
+    // ============================================================
+
+    console.log('================================================');
     console.log('PASS: BILLING CYCLE VERIFIED');
-    console.log('========================================');
-
-    /*
-    // ============================================================
-    // NEXT BILLING CYCLE
-    // ============================================================
-
-    // Calling this again will read the NEW pending bill created
-    // after the previous billing cycle.
-
-    const nextPendingBill = await getNextPendingBill();
-
-    await cleanJobs(nextPendingBill.jobDate);
-    await setCcpTime(nextPendingBill.jobDate);
-    await runDailyJob(nextPendingBill.jobDate);
-
-    await verifyBill(
-        nextPendingBill.startDate,
-        nextPendingBill.endDate
-    );
-
-    console.log('PASS: SECOND BILLING CYCLE VERIFIED');
-    */
+    console.log(`Account: ${accountId}`);
+    console.log(`Bill Period: ${pendingBill.startDate} -> ${pendingBill.endDate}`);
+    console.log(`Billing Job Date: ${pendingBill.jobDate}`);
+    console.log('================================================');
 });

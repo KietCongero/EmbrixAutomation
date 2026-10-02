@@ -11,7 +11,7 @@ test('read bill and apply payment', async ({ page, request }) => {
     */
     const username = process.env.OCI_USERNAME;
     const password = process.env.OCI_PASSWORD;
-    const accountId = 'TEST1111';
+    const accountId = ACCOUNT_ID;
 
     const apiToken = process.env.EMBRIX_API_TOKEN;
 
@@ -21,7 +21,7 @@ test('read bill and apply payment', async ({ page, request }) => {
 
     // Login
     // await page.goto('https://core-ui.coopegsbx.embrix.org/login');
-    await page.goto('https://core-ui.oc-congero.embrix.org/login');
+    await page.goto('https://core-ui.demo.embrix.org/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();

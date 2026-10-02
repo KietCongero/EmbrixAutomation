@@ -1,64 +1,63 @@
 import { test, expect } from '@playwright/test';
+import { ACCOUNT_ID } from '../test-data/testIds';
 
-test('login for recording', async ({ page }) => {
-    const username = process.env.OCI_USERNAME;
-    const password = process.env.OCI_PASSWORD;
-    const accountId = 'TEST1111';
+test('record collection flow', async ({ page }) => {
+    test.setTimeout(20 * 60 * 1000);
+
+    const username = process.env.EMBRIX_USERNAME;
+    const password = process.env.EMBRIX_PASSWORD;
+    const accountId = ACCOUNT_ID;
 
     if (!username || !password) throw new Error('Missing username or password');
 
-    //await page.goto('https://core-ui.demo.embrix.org/login');
-    await page.goto('https://core-ui.oc-congero.embrix.org/login');
+    // ============================================================
+    // LOGIN
+    // ============================================================
+
+    await page.goto('https://core-ui.demo.embrix.org/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
-
     await expect(page).toHaveURL(/\/dashboard\/me\/?$/);
 
     console.log('PASS: Login successful');
 
-    await page
-        .getByRole('button', { name: 'Customer Hub' })
-        .click();
+    // ============================================================
+    // OPEN COLLECTIONS
+    // ============================================================
 
-    await page
-        .getByRole('link', { name: 'Customer Management' })
-        .first()
-        .click();
+    await page.getByRole('button', { name: 'AR Hub' }).click();
+    await page.getByRole('link', { name: 'Collections' }).click();
 
-    console.log(`Searching for account ${accountId}...`);
+    console.log('PASS: Collections opened');
 
-    const accountSearch = page
-        .locator('.form-group')
-        .first()
-        .getByRole('textbox');
+    // ============================================================
+    // SEARCH ACCOUNT
+    // ============================================================
 
-    await accountSearch.fill(accountId);
+    const collectionSearch = page.locator('.form-group').first().getByRole('textbox');
 
-    await page
-        .getByRole('button', { name: 'Search', exact: true })
-        .click();
+    await collectionSearch.fill(accountId);
+    await page.getByRole('button', { name: 'Search' }).click();
+    await page.waitForTimeout(3000);
 
-    await expect(
-        page.getByRole('link', {
-            name: accountId,
-            exact: true,
-        })
-    ).toBeVisible();
+    console.log(`PASS: Searched account ${accountId}`);
 
-    await page
-        .getByRole('link', {
-            name: accountId,
-            exact: true,
-        })
-        .click();
+    // ============================================================
+    // SHOW HOW MANY COLLECTION ROWS EXIST
+    // ============================================================
 
-    console.log(`PASS: Account ${accountId} found`);
+    const viewButtons = page.getByRole('cell', { name: 'View' });
+    const viewCount = await viewButtons.count();
 
-    await page
-        .locator('a')
-        .filter({ hasText: 'Subscription Data' })
-        .click();
+    console.log(`Collection View rows found: ${viewCount}`);
+
+    // ============================================================
+    // PAUSE HERE AND RECORD MANUALLY
+    // ============================================================
+
+    console.log('PAUSED: Use Playwright Inspector to click the correct collection row.');
+    console.log('Record how you identify the correct/current collection.');
 
     await page.pause();
 });
