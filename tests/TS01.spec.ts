@@ -23,9 +23,6 @@ test('TC08 - Preparation Flow', async () => {
         await new Promise(resolve => setTimeout(resolve, seconds * 1000));
     };
 
-    run('tests/cancel.spec.ts');
-    await wait(10);
-
     run('tests/test-1.spec.ts');
     await wait(10);
 
@@ -35,6 +32,6 @@ test('TC08 - Preparation Flow', async () => {
 
     console.log('================================================');
     console.log('PASS: TC08 PREPARATION COMPLETE');
-    console.log('cancel -> test-1 -> TC07-A-Collection');
+    console.log('test-1 -> TC07-A-Collection');
     console.log('================================================');
 });
