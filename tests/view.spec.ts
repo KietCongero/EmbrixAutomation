@@ -22,42 +22,5 @@ test('record collection flow', async ({ page }) => {
 
     console.log('PASS: Login successful');
 
-    // ============================================================
-    // OPEN COLLECTIONS
-    // ============================================================
-
-    await page.getByRole('button', { name: 'AR Hub' }).click();
-    await page.getByRole('link', { name: 'Collections' }).click();
-
-    console.log('PASS: Collections opened');
-
-    // ============================================================
-    // SEARCH ACCOUNT
-    // ============================================================
-
-    const collectionSearch = page.locator('.form-group').first().getByRole('textbox');
-
-    await collectionSearch.fill(accountId);
-    await page.getByRole('button', { name: 'Search' }).click();
-    await page.waitForTimeout(3000);
-
-    console.log(`PASS: Searched account ${accountId}`);
-
-    // ============================================================
-    // SHOW HOW MANY COLLECTION ROWS EXIST
-    // ============================================================
-
-    const viewButtons = page.getByRole('cell', { name: 'View' });
-    const viewCount = await viewButtons.count();
-
-    console.log(`Collection View rows found: ${viewCount}`);
-
-    // ============================================================
-    // PAUSE HERE AND RECORD MANUALLY
-    // ============================================================
-
-    console.log('PAUSED: Use Playwright Inspector to click the correct collection row.');
-    console.log('Record how you identify the correct/current collection.');
-
     await page.pause();
 });

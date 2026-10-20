@@ -1,27 +1,25 @@
+
 import { test, expect } from '@playwright/test';
 import { queryDatabase } from '../helpers/database';
 import { ACCOUNT_ID } from '../test-data/testIds';
 
 test('TC08 - billing, collections, payments, suspension and reconnection', async ({ page, request }) => {
-    test.setTimeout(20 * 60 * 1000);
+    test.setTimeout(40 * 60 * 1000);
 
     const username = process.env.EMBRIX_USERNAME;
     const password = process.env.EMBRIX_PASSWORD;
     const apiToken = process.env.EMBRIX_API_TOKEN;
     const accountId = ACCOUNT_ID;
 
-    const RESUME_COLLECTION = process.env.RESUME_COLLECTION === 'true';
-
     const RUN_STEP = process.env.RUN_STEP ? Number(process.env.RUN_STEP) : 0;
     const BILLING_DATE = process.env.BILLING_DATE;
+    const RESUME_COLLECTION = process.env.RESUME_COLLECTION === 'true';
 
     const dailyJobUrl = 'https://core-ui.demo.embrix.org/jobs-management/job-schedule/CJ-12';
     const paymentUrl = 'https://crm-gateway.coopegsbx.embrix.org/applyPayment';
 
     if (!username || !password || !apiToken) throw new Error('Missing environment variables');
-    if (!Number.isInteger(RUN_STEP) || RUN_STEP < 0 || RUN_STEP > 8) throw new Error(`Invalid RUN_STEP: ${RUN_STEP}`);
-    if (BILLING_DATE && !/^\d{4}-\d{2}-\d{2}$/.test(BILLING_DATE)) throw new Error(`Invalid BILLING_DATE: ${BILLING_DATE}`);
-    if (RUN_STEP !== 0 && [3, 4, 6, 7, 8].includes(RUN_STEP) && !BILLING_DATE) throw new Error(`RUN_STEP=${RUN_STEP} requires BILLING_DATE`);
+    if (!Number.isInteger(RUN_STEP) || RUN_STEP < 0 || RUN_STEP > 9) throw new Error(`Invalid RUN_STEP: ${RUN_STEP}`);
 
     const shouldRun = (step: number) => RUN_STEP === 0 || RUN_STEP === step;
 
@@ -32,16 +30,17 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
         dueDate: string;
     };
 
-    type CollectionInfo = {
-        day16: string;
-        firstReminderDate: string;
-        nextActionDate: string;
+    type InvoiceInfo = {
+        invoiceId: string;
+        startDate: string;
+        endDate: string;
+        status: string;
+        folioStatus: string;
+        due: number;
     };
 
     let month03Bill: BillInfo | null = null;
     let month04Bill: BillInfo | null = null;
-    let month03Collection: CollectionInfo | null = null;
-    let month04Collection: CollectionInfo | null = null;
 
     // ============================================================
     // DATE HELPERS
@@ -53,23 +52,10 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
         return match[0];
     };
 
-    const getPreviousMonthStart = (billingDate: string) => {
-        const [yearText, monthText] = billingDate.split('-');
-
-        let year = Number(yearText);
-        let month = Number(monthText) - 1;
-
-        if (month === 0) {
-            month = 12;
-            year--;
-        }
-
-        return `${year}-${String(month).padStart(2, '0')}-01`;
-    };
-
-    const getCollectionStartDate = (billingDate: string) => {
-        const [year, month] = billingDate.split('-');
-        return `${year}-${month}-16`;
+    const getPreviousMonthStart = (date: string) => {
+        const [year, month] = date.split('-').map(Number);
+        const previous = new Date(Date.UTC(year, month - 2, 1));
+        return previous.toISOString().slice(0, 10);
     };
 
     // ============================================================
@@ -82,7 +68,6 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
         await page.getByRole('link', { name: 'Customer Management' }).first().click();
 
         const accountSearch = page.locator('.form-group').first().getByRole('textbox');
-
         await accountSearch.fill(accountId);
         await page.getByRole('button', { name: 'Search', exact: true }).click();
         await expect(page.getByRole('link', { name: accountId, exact: true })).toBeVisible();
@@ -102,41 +87,24 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
     // SERVICE STATUS
     // ============================================================
 
-    const verifyServiceSuspended = async () => {
+    const verifyServiceStatus = async (expectedStatus: 'ACTIVE' | 'SUSPENDED') => {
         await openServices();
 
-        console.log('Checking for SUSPENDED service...');
-
-        const suspendedStatus = page.getByRole('cell', { name: 'SUSPENDED', exact: true }).first();
-
-        await expect(suspendedStatus, `Account ${accountId} does not have a SUSPENDED service`).toBeVisible();
-
-        console.log(`PASS: Service for ${accountId} is SUSPENDED`);
-    };
-
-    const verifyServiceActive = async () => {
-        await openServices();
-
-        console.log('Waiting for service to become ACTIVE...');
-
-        let activeFound = false;
+        console.log(`Checking for ${expectedStatus} service...`);
 
         for (let attempt = 1; attempt <= 10; attempt++) {
-            console.log(`Checking ACTIVE status: ${attempt}/10`);
+            const status = page.getByRole('cell', { name: expectedStatus, exact: true }).first();
 
-            const activeStatus = page.getByRole('cell', { name: 'ACTIVE', exact: true }).first();
-
-            if (await activeStatus.isVisible().catch(() => false)) {
-                activeFound = true;
-                console.log(`PASS: Service for ${accountId} is ACTIVE`);
-                break;
+            if (await status.isVisible().catch(() => false)) {
+                console.log(`PASS: Service for ${accountId} is ${expectedStatus}`);
+                return;
             }
 
             await page.waitForTimeout(5000);
             await page.getByRole('button', { name: 'Refresh' }).click();
         }
 
-        expect(activeFound, `Service for account ${accountId} never reached ACTIVE`).toBe(true);
+        throw new Error(`Service ${accountId} did not reach ${expectedStatus}`);
     };
 
     // ============================================================
@@ -149,15 +117,21 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
         await page.goto('https://transactional.coopeg.embrix.org/graphiql?');
 
         const mutation = `mutation {
-  setCcpTime(input: {
-    ccpTime: "${targetDate}"
-  })
-  {
-    ccpTime
-  }
-}`;
+            setCcpTime(input: {
+                ccpTime: "${targetDate}"
+            }) {
+                ccpTime
+            }
+        }`;
 
-        await page.evaluate((query) => { const editorElement = document.querySelector('.CodeMirror'); const codeMirror = (editorElement as any)?.CodeMirror; if (!codeMirror) throw new Error('CodeMirror editor not found'); codeMirror.setValue(query); codeMirror.focus(); }, mutation);
+        await page.evaluate((query) => {
+            const editorElement = document.querySelector('.CodeMirror');
+            const codeMirror = (editorElement as any)?.CodeMirror;
+            if (!codeMirror) throw new Error('CodeMirror editor not found');
+            codeMirror.setValue(query);
+            codeMirror.focus();
+        }, mutation);
+
         await page.waitForTimeout(1000);
         await page.getByRole('button', { name: 'Execute Query (Ctrl-Enter)' }).click();
         await expect(page.locator('pre').filter({ hasText: `"ccpTime": "${targetDate}"` })).toBeVisible();
@@ -184,33 +158,21 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
         }
 
         const remainingJobs = await queryDatabase(`SELECT * FROM core_engine.job_schedule WHERE scheduledate = $1`, [targetDate]);
-
-        expect(remainingJobs.length, `Jobs still exist for ${targetDate}`).toBe(0);
-
-        console.log(`PASS: Jobs cleaned for ${targetDate}`);
+        expect(remainingJobs.length).toBe(0);
     };
 
-    // IMPORTANT:
-    // THIS IS THE ONLY COLLECTION CLEANUP.
-    // WE CLEAN EVERYTHING FROM THE 16TH TO END OF MONTH
-    // BEFORE COLLECTION STARTS.
-    //
-    // AFTER COLLECTION STARTS WE NEVER DELETE EMBRIX-GENERATED JOBS.
-
-    const cleanCollectionJobs = async (billingDate: string) => {
-        const [year, month] = billingDate.split('-').map(Number);
+    const cleanCollectionJobs = async (dueDate: string) => {
+        const [year, month, startDay] = dueDate.split('-').map(Number);
         const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
-        console.log('================================================');
-        console.log(`Cleaning collection jobs from ${year}-${String(month).padStart(2, '0')}-16 through end of month`);
-        console.log('================================================');
+        console.log(`Cleaning collection jobs from ${dueDate} through end of month`);
 
-        for (let day = 16; day <= lastDay; day++) {
+        for (let day = startDay; day <= lastDay; day++) {
             const targetDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             await cleanJobs(targetDate);
         }
 
-        console.log(`PASS: Collection jobs cleaned from day 16 through day ${lastDay}`);
+        console.log('PASS: Collection jobs cleaned before collection creation');
     };
 
     // ============================================================
@@ -219,7 +181,6 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
 
     const fillJobDate = async (targetDate: string) => {
         const dateInput = page.getByRole('textbox').first();
-
         await dateInput.click();
         await dateInput.press('ControlOrMeta+a');
         await dateInput.fill(targetDate);
@@ -229,8 +190,6 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
     };
 
     const waitAfterJobRun = async () => {
-        let completedFound = false;
-
         for (let attempt = 1; attempt <= 6; attempt++) {
             console.log(`Refreshing jobs: ${attempt}/6`);
 
@@ -240,13 +199,12 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
             const completed = page.getByText('Completed', { exact: true }).first();
 
             if (await completed.isVisible().catch(() => false)) {
-                completedFound = true;
                 console.log('PASS: Job processing shows COMPLETED');
-                break;
+                return;
             }
         }
 
-        if (!completedFound) console.log('WARNING: Completed status not detected');
+        console.log('WARNING: Completed status not detected');
     };
 
     const createAndRunDailyJob = async (targetDate: string) => {
@@ -256,21 +214,14 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
         await fillJobDate(targetDate);
         await page.getByRole('button', { name: 'Create Job Schedule' }).click();
 
-        console.log(`PASS: Job schedule created for ${targetDate}`);
-
         await page.getByTitle('Refresh jobs').click();
         await page.waitForTimeout(5000);
         await page.getByRole('button', { name: 'Process' }).click();
         await page.getByRole('button', { name: 'Yes' }).click();
 
         console.log(`PASS: Processing started for ${targetDate}`);
-
         await waitAfterJobRun();
     };
-
-    // EMBRIX CREATED THIS JOB.
-    // DO NOT DELETE IT.
-    // DO NOT CREATE ANOTHER ONE.
 
     const runExistingDailyJob = async (targetDate: string) => {
         console.log(`Running existing DAILY job for ${targetDate}...`);
@@ -284,46 +235,33 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
         await page.getByRole('button', { name: 'Process' }).click();
         await page.getByRole('button', { name: 'Yes' }).click();
 
-        console.log(`PASS: Existing job processing started for ${targetDate}`);
-
         await waitAfterJobRun();
     };
 
     // ============================================================
-    // BILLING - NEXT PENDING BILL
+    // BILLING
     // ============================================================
 
     const getNextPendingBill = async () => {
-        await openAccount();
-        await page.locator('a').filter({ hasText: 'Billing Data' }).click();
-        await page.getByRole('link', { name: ' Bills' }).click();
+        await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/bills`);
 
         console.log('Looking for next PENDING bill...');
 
-        const pendingBillRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'PENDING', exact: true }) }).first();
+        const pendingBillRow = page.getByRole('row').filter({
+            has: page.getByRole('cell', { name: 'PENDING', exact: true })
+        }).first();
 
         await expect(pendingBillRow).toBeVisible();
 
         const dateCells = pendingBillRow.getByRole('cell').filter({ hasText: /^\d{4}-\d{2}-\d{2}$/ });
 
-        await expect(dateCells.nth(0)).toBeVisible();
-        await expect(dateCells.nth(1)).toBeVisible();
-
         const startDate = (await dateCells.nth(0).innerText()).trim();
         const endDate = (await dateCells.nth(1).innerText()).trim();
 
-        console.log(`PASS: Pending bill found ${startDate} -> ${endDate}`);
+        console.log(`PASS: Next pending bill ${startDate} -> ${endDate}`);
 
-        return {
-            startDate,
-            endDate,
-            jobDate: endDate
-        };
+        return { startDate, endDate, jobDate: endDate };
     };
-
-    // ============================================================
-    // BILLING JOB
-    // ============================================================
 
     const runBillingDailyJob = async (targetDate: string) => {
         console.log(`Running billing DAILY job for ${targetDate}...`);
@@ -333,11 +271,9 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
         await page.getByRole('link', { name: 'Jobs Management' }).click();
         await page.locator('#sidebarnav a').filter({ hasText: 'Jobs Management' }).click();
         await page.getByRole('link', { name: ' DAILY' }).click();
+
         await fillJobDate(targetDate);
         await page.getByRole('button', { name: 'Create Job Schedule' }).click();
-
-        console.log(`PASS: Billing job created for ${targetDate}`);
-
         await page.getByTitle('Refresh jobs').click();
         await page.waitForTimeout(2000);
         await page.getByRole('button', { name: 'Process' }).click();
@@ -347,8 +283,7 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
 
         await page.waitForTimeout(15000);
 
-        let invoiceFinished = false;
-        let invoiceStatus = '';
+        let invoiceStatus = 'UNKNOWN';
 
         for (let attempt = 1; attempt <= 20; attempt++) {
             console.log(`Checking INVOICE_CHECK ${targetDate}: ${attempt}/20`);
@@ -358,50 +293,28 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
 
             const invoiceCheck = page.getByRole('heading', { name: 'INVOICE_CHECK' });
 
-            if (!(await invoiceCheck.isVisible().catch(() => false))) {
-                console.log('INVOICE_CHECK not visible yet...');
-                continue;
-            }
+            if (!(await invoiceCheck.isVisible().catch(() => false))) continue;
 
-            const invoiceCompleted = page.getByTitle('Status: COMPLETED');
-            const invoiceError = page.getByTitle('Status: ERROR');
-
-            if (await invoiceCompleted.isVisible().catch(() => false)) {
+            if (await page.getByTitle('Status: COMPLETED').isVisible().catch(() => false)) {
                 invoiceStatus = 'COMPLETED';
-                invoiceFinished = true;
-                console.log(`PASS: INVOICE_CHECK reached COMPLETED for ${targetDate}`);
                 break;
             }
 
-            if (await invoiceError.isVisible().catch(() => false)) {
+            if (await page.getByTitle('Status: ERROR').isVisible().catch(() => false)) {
                 invoiceStatus = 'ERROR';
-                invoiceFinished = true;
-                console.log(`WARNING: INVOICE_CHECK reached ERROR for ${targetDate}`);
                 break;
             }
-
-            console.log('INVOICE_CHECK still processing...');
         }
 
-        if (!invoiceFinished) {
-            console.log(`WARNING: INVOICE_CHECK did not finish for ${targetDate}`);
-            console.log('Continuing to bill verification...');
-        }
+        console.log(`Final INVOICE_CHECK status: ${invoiceStatus}`);
 
-        console.log(`Final INVOICE_CHECK status: ${invoiceStatus || 'UNKNOWN'}`);
+        if (invoiceStatus === 'ERROR') {
+            console.log('WARNING: INVOICE_CHECK reported ERROR. Verifying whether the invoice was generated...');
+        }
     };
 
-    // ============================================================
-    // GET STAMPED BILL
-    // ============================================================
-
-    const getStampedBillByBillingDate = async (billingDate: string): Promise<BillInfo> => {
-        const startDate = getPreviousMonthStart(billingDate);
-        const endDate = billingDate;
-
-        await openAccount();
-        await page.locator('a').filter({ hasText: 'Billing Data' }).click();
-        await page.getByRole('link', { name: ' Bills' }).click();
+    const getStampedBillByPeriod = async (startDate: string, endDate: string): Promise<BillInfo> => {
+        await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/bills`);
 
         console.log(`Looking for STAMPED bill ${startDate} -> ${endDate}...`);
 
@@ -411,7 +324,6 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
             if (await billRow.isVisible().catch(() => false)) break;
 
             console.log(`STAMPED bill not found. Reloading... ${attempt}/10`);
-
             await page.reload();
             await page.waitForTimeout(5000);
 
@@ -420,40 +332,20 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
 
         await expect(billRow, `Could not find STAMPED bill ${startDate} -> ${endDate}`).toBeVisible();
 
-        const table = billRow.locator('xpath=ancestor::table[1]');
-        const headers = table.getByRole('columnheader');
-        const headerCount = await headers.count();
+        const values = (await billRow.getByRole('cell').allInnerTexts()).map(value => value.trim());
 
-        let dueDateIndex = -1;
-
-        for (let i = 0; i < headerCount; i++) {
-            const headerText = (await headers.nth(i).innerText()).trim();
-
-            if (headerText === 'Due Date') {
-                dueDateIndex = i;
-                break;
-            }
+        if (values.length !== 26) throw new Error(`Unexpected stamped invoice column count: ${values.length}`);
+        if (values[3] !== startDate || values[4] !== endDate || values[11] !== 'STAMPED') {
+            throw new Error(`Incorrect stamped invoice period or folio status for ${startDate} -> ${endDate}`);
         }
 
-        if (dueDateIndex === -1) throw new Error('Could not find Due Date column');
-
-        const dueDateText = await billRow.getByRole('cell').nth(dueDateIndex).innerText();
-        const dueDate = normalizeDate(dueDateText);
+        const dueDate = normalizeDate(values[15]);
 
         console.log(`PASS: STAMPED bill found ${startDate} -> ${endDate}`);
         console.log(`PASS: Due Date = ${dueDate}`);
 
-        return {
-            startDate,
-            endDate,
-            jobDate: endDate,
-            dueDate
-        };
+        return { startDate, endDate, jobDate: endDate, dueDate };
     };
-
-    // ============================================================
-    // BILLING CYCLE
-    // ============================================================
 
     const runNextBillingCycle = async (label: string): Promise<BillInfo> => {
         console.log('================================================');
@@ -462,220 +354,198 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
 
         const pendingBill = await getNextPendingBill();
 
-        console.log(`${label} pending period: ${pendingBill.startDate} -> ${pendingBill.endDate}`);
-        console.log(`${label} billing job date: ${pendingBill.jobDate}`);
+        console.log(`Billing period: ${pendingBill.startDate} -> ${pendingBill.endDate}`);
+        console.log(`Billing job date: ${pendingBill.jobDate}`);
 
         await cleanJobs(pendingBill.jobDate);
         await setCcpTime(pendingBill.jobDate);
         await runBillingDailyJob(pendingBill.jobDate);
 
-        const bill = await getStampedBillByBillingDate(pendingBill.jobDate);
+        const bill = await getStampedBillByPeriod(pendingBill.startDate, pendingBill.endDate);
 
-        console.log('================================================');
         console.log(`PASS: ${label} BILLING COMPLETE`);
         console.log(`Period: ${bill.startDate} -> ${bill.endDate}`);
         console.log(`Due Date: ${bill.dueDate}`);
-        console.log('================================================');
 
         return bill;
     };
 
     // ============================================================
-    // CHECKPOINT BILL
+    // COLLECTION - CURRENT ACTION
     // ============================================================
 
-    const recoverCheckpointBill = async (step: number): Promise<BillInfo> => {
-        if (!BILLING_DATE) throw new Error(`RUN_STEP=${step} requires BILLING_DATE`);
-
-        console.log('================================================');
-        console.log(`RECOVERING CHECKPOINT FOR STEP ${step}`);
-        console.log(`BILLING DATE: ${BILLING_DATE}`);
-        console.log('================================================');
-
-        return await getStampedBillByBillingDate(BILLING_DATE);
-    };
-
-    // ============================================================
-    // COLLECTION
-    // ============================================================
-
-    const getCollectionInfo = async (expectedAction: string) => {
-        console.log(`Checking Collection for ${expectedAction}...`);
+    const getCollectionInfo = async (minimumDate: string) => {
+        const [year, month] = minimumDate.split('-').map(Number);
+        const lastDay = String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, '0');
+        const maximumDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
 
         for (let attempt = 1; attempt <= 10; attempt++) {
-            console.log(`Collection search attempt ${attempt}/10`);
+            console.log(`Collection search ${attempt}/10: ${minimumDate} -> ${maximumDate}`);
 
             await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
             await page.getByRole('button', { name: 'AR Hub' }).click();
             await page.getByRole('link', { name: 'Collections' }).click();
 
             const collectionSearch = page.locator('.form-group').first().getByRole('textbox');
-
             await collectionSearch.fill(accountId);
             await page.getByRole('button', { name: 'Search' }).click();
-            await page.waitForTimeout(10000);
+            await page.waitForTimeout(3000);
 
-            const viewButton = page.getByRole('button', { name: 'View' });
+            const viewCell = page.getByRole('cell', { name: 'View', exact: true }).first();
 
-            if (!(await viewButton.isVisible().catch(() => false))) {
-                console.log('Collection View button not found yet...');
+            if (!(await viewCell.isVisible().catch(() => false))) {
+                console.log('Collection View cell not found yet...');
                 continue;
             }
 
-            await viewButton.click();
+            await viewCell.click();
             await page.waitForTimeout(2000);
 
-            const actionCell = page.getByRole('cell', { name: expectedAction, exact: true }).last();
+            const actionCells = page.getByRole('cell', { name: /^(FIRST_REMINDER_EMAIL|INACTIVATE_SUBSCRIPTION)$/ });
 
-            if (!(await actionCell.isVisible().catch(() => false))) {
-                console.log(`${expectedAction} not found yet...`);
-                continue;
+            for (let index = (await actionCells.count()) - 1; index >= 0; index--) {
+                const actionCell = actionCells.nth(index);
+                const action = (await actionCell.innerText()).trim();
+                const actionRow = actionCell.locator('xpath=ancestor::tr[1]');
+                const table = actionRow.locator('xpath=ancestor::table[1]');
+                const headers = await table.getByRole('columnheader').allInnerTexts();
+                const dateIndex = headers.findIndex(text => text.trim() === 'Next Action Date');
+
+                if (dateIndex === -1) throw new Error('Could not find Next Action Date column');
+
+                const nextActionDate = normalizeDate(await actionRow.getByRole('cell').nth(dateIndex).innerText());
+
+                if (nextActionDate < minimumDate || nextActionDate > maximumDate) continue;
+
+                console.log(`PASS: Current collection action = ${action} on ${nextActionDate}`);
+                return { action, nextActionDate };
             }
 
-            await actionCell.scrollIntoViewIfNeeded();
-
-            const actionRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: expectedAction, exact: true }) }).last();
-
-            await expect(actionRow).toBeVisible();
-
-            const table = actionRow.locator('xpath=ancestor::table[1]');
-            const headers = table.getByRole('columnheader');
-            const headerCount = await headers.count();
-
-            let nextActionDateIndex = -1;
-
-            for (let i = 0; i < headerCount; i++) {
-                const headerText = (await headers.nth(i).innerText()).trim();
-
-                if (headerText === 'Next Action Date') {
-                    nextActionDateIndex = i;
-                    break;
-                }
-            }
-
-            if (nextActionDateIndex === -1) throw new Error('Could not find Next Action Date column');
-
-            const cells = actionRow.getByRole('cell');
-            const nextActionDateText = await cells.nth(nextActionDateIndex).innerText();
-            const nextActionDate = normalizeDate(nextActionDateText);
-
-            console.log(`PASS: Next Action = ${expectedAction}`);
-            console.log(`PASS: Next Action Date = ${nextActionDate}`);
-
-            return {
-                action: expectedAction,
-                nextActionDate
-            };
+            console.log('No matching collection action yet...');
+            if (attempt < 10) await page.waitForTimeout(5000);
         }
 
-        throw new Error(`Could not find ${expectedAction} after 10 attempts`);
+        throw new Error(`Could not find collection action from ${minimumDate} through ${maximumDate}`);
     };
 
-    const runCollection = async (billingDate: string, label: string): Promise<CollectionInfo> => {
-        const day16 = getCollectionStartDate(billingDate);
+    // ============================================================
+    // COLLECTION - THROUGH FIRST REMINDER ONLY
+    // ============================================================
+
+    const runCollection = async (bill: BillInfo, label: string) => {
+        const dueDate = bill.dueDate;
 
         console.log('================================================');
         console.log(`STARTING ${label} COLLECTION`);
-        console.log(`COLLECTION START DATE: ${day16}`);
+        console.log(`Bill period: ${bill.startDate} -> ${bill.endDate}`);
+        console.log(`Collection date: ${dueDate}`);
         console.log('================================================');
-
-        // ========================================================
-        // BEFORE COLLECTION STARTS:
-        // DELETE PRE-EXISTING JOBS FROM 16TH THROUGH END OF MONTH
-        // ========================================================
 
         if (!RESUME_COLLECTION) {
-            await cleanCollectionJobs(billingDate);
-            await setCcpTime(day16);
-            await createAndRunDailyJob(day16);
+            await cleanCollectionJobs(dueDate);
+            await setCcpTime(dueDate);
+            await createAndRunDailyJob(dueDate);
         } else {
-            console.log(`RESUME: Skipping collection start job ${day16} because it already ran`);
+            console.log(`RESUME: Collection Create already ran for ${dueDate}`);
         }
 
-        // ========================================================
-        // EMBRIX CREATED FIRST_REMINDER_EMAIL
-        // DO NOT DELETE
-        // DO NOT CREATE
-        // ========================================================
+        const firstAction = await getCollectionInfo(dueDate);
 
-        const firstReminder = await getCollectionInfo('FIRST_REMINDER_EMAIL');
+        if (firstAction.action === 'FIRST_REMINDER_EMAIL') {
+            console.log(`FIRST REMINDER DATE: ${firstAction.nextActionDate}`);
 
-        console.log('================================================');
-        console.log(`FIRST REMINDER DATE: ${firstReminder.nextActionDate}`);
-        console.log('================================================');
+            await setCcpTime(firstAction.nextActionDate);
+            await runExistingDailyJob(firstAction.nextActionDate);
+        } else {
+            console.log(`FIRST_REMINDER_EMAIL already passed. Current action: ${firstAction.action}`);
+        }
 
-        await setCcpTime(firstReminder.nextActionDate);
-        await runExistingDailyJob(firstReminder.nextActionDate);
+        const nextAction = await getCollectionInfo(dueDate);
 
-        // ========================================================
-        // EMBRIX CREATED NEXT COLLECTION ACTION
-        // DO NOT DELETE
-        // DO NOT RUN YET
-        // ========================================================
+        if (nextAction.action !== 'INACTIVATE_SUBSCRIPTION') {
+            throw new Error(`${label} collection did not advance to INACTIVATE_SUBSCRIPTION`);
+        }
 
-        const nextAction = await getCollectionInfo('INACTIVATE_SUBSCRIPTION');
+        console.log(`PASS: ${label} collection completed through FIRST_REMINDER_EMAIL`);
+        console.log(`Next action: ${nextAction.action} on ${nextAction.nextActionDate}`);
+        console.log('Automatic suspension job will NOT run.');
 
-        console.log('================================================');
-        console.log(`NEXT ACTION DATE: ${nextAction.nextActionDate}`);
-        console.log('================================================');
-
-        console.log(`PASS: ${label} collection completed through first reminder`);
-        console.log(`PASS: Embrix-generated suspension job preserved for ${nextAction.nextActionDate}`);
-
-        return {
-            day16,
-            firstReminderDate: firstReminder.nextActionDate,
-            nextActionDate: nextAction.nextActionDate
-        };
+        return nextAction;
     };
 
     // ============================================================
-    // PAYMENT
+    // BILL PAYMENT - READ ACTUAL INVOICE TABLE
     // ============================================================
 
-    const payPreviousMonthBill = async (billingDate: string) => {
-        const previousMonthStart = getPreviousMonthStart(billingDate);
+    const openBills = async () => {
+        await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/bills`);
+        await expect(page.getByRole('row').filter({ hasText: 'STAMPED' }).first()).toBeVisible();
+    };
+
+    const readInvoices = async (): Promise<InvoiceInfo[]> => {
+        const rows = page.getByRole('row');
+        const invoices: InvoiceInfo[] = [];
+
+        for (let i = 0; i < await rows.count(); i++) {
+            const values = (await rows.nth(i).getByRole('cell').allInnerTexts()).map(value => value.trim());
+
+            if (values.length !== 26) continue;
+
+            const invoiceId = values[8];
+            const due = Number(values[14].replace(/,/g, '').replace(/[^\d.-]/g, ''));
+
+            if (!invoiceId) continue;
+
+            invoices.push({
+                invoiceId,
+                startDate: values[3],
+                endDate: values[4],
+                status: values[10],
+                folioStatus: values[11],
+                due
+            });
+        }
+
+        return invoices;
+    };
+
+    // ============================================================
+    // PAY OLDEST OUTSTANDING INVOICE AND VERIFY CLOSED
+    // ============================================================
+
+
+    const payBill = async (expectedStartDate: string, expectedEndDate: string) => {
+        console.log('================================================');
+        console.log('PAYING OLDEST OUTSTANDING INVOICE');
+        console.log(`Billing reference: ${expectedStartDate} -> ${expectedEndDate}`);
+        console.log('================================================');
+
+        await openBills();
+
+        const invoicesBefore = await readInvoices();
 
         console.log('================================================');
-        console.log('PAYING PREVIOUS MONTH BILL');
-        console.log(`Billing date: ${billingDate}`);
-        console.log(`Target bill: ${previousMonthStart} -> ${billingDate}`);
+        console.log('INVOICES BEFORE PAYMENT');
         console.log('================================================');
 
-        await openAccount();
-        await page.locator('a').filter({ hasText: 'Billing Data' }).click();
-        await page.getByRole('link', { name: /Bills/ }).click();
+        for (const invoice of invoicesBefore) {
+            console.log(`${invoice.invoiceId} | ${invoice.startDate} -> ${invoice.endDate} | ${invoice.status} | Due: ${invoice.due}`);
+        }
 
-        console.log(`Looking for bill row ${previousMonthStart} -> ${billingDate}...`);
+        const outstanding = invoicesBefore
+            .filter(invoice => invoice.status !== 'CLOSED' && invoice.folioStatus === 'STAMPED' && Number.isFinite(invoice.due) && invoice.due > 0)
+            .sort((a, b) => a.startDate.localeCompare(b.startDate));
 
-        const billRow = page.getByRole('row').filter({ hasText: previousMonthStart }).filter({ hasText: billingDate }).filter({ hasText: 'STAMPED' }).first();
+        if (outstanding.length === 0) throw new Error(`No outstanding invoices found for account ${accountId}`);
 
-        await expect(billRow).toBeVisible();
+        const oldestInvoice = outstanding[0];
 
-        console.log(`PASS: Found bill row ${previousMonthStart} -> ${billingDate}`);
-
-        const viewCell = billRow.getByRole('cell', { name: 'View', exact: true }).first();
-
-        await expect(viewCell).toBeVisible();
-        await viewCell.click();
-
-        const table = page.getByRole('columnheader', { name: 'Invoice Id' }).locator('xpath=ancestor::table');
-        const headers = table.locator('thead th');
-        const invoiceRow = table.locator('tbody tr').first();
-        const headerTexts = await headers.allInnerTexts();
-
-        const invoiceIndex = headerTexts.findIndex(x => x.trim() === 'Invoice Id');
-        const billTotalIndex = headerTexts.findIndex(x => x.trim() === 'Bill Total');
-
-        if (invoiceIndex === -1) throw new Error('Could not find Invoice Id column');
-        if (billTotalIndex === -1) throw new Error('Could not find Bill Total column');
-
-        const invoiceId = (await invoiceRow.locator('td').nth(invoiceIndex).innerText()).trim();
-        const billTotalText = (await invoiceRow.locator('td').nth(billTotalIndex).innerText()).trim();
-        const billTotal = Number(billTotalText.replace(/,/g, '').replace(/[^\d.-]/g, ''));
-
-        console.log(`Invoice ID: ${invoiceId}`);
-        console.log(`Bill Total: ${billTotal}`);
+        console.log('================================================');
+        console.log('SELECTED OLDEST OUTSTANDING INVOICE');
+        console.log(`Invoice ID: ${oldestInvoice.invoiceId}`);
+        console.log(`Period: ${oldestInvoice.startDate} -> ${oldestInvoice.endDate}`);
+        console.log(`Amount: ${oldestInvoice.due} CRC`);
+        console.log('================================================');
 
         const response = await request.post(paymentUrl, {
             headers: {
@@ -689,34 +559,68 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
                 paymentSource: 'BCR',
                 allocationData: [{
                     accountId,
-                    invoiceId,
+                    invoiceId: oldestInvoice.invoiceId,
                     currency: 'CRC',
-                    amount: billTotal,
+                    amount: oldestInvoice.due,
                 }],
             },
         });
 
         const body = await response.json();
 
-        console.log(body);
+        console.log('Payment response:', body);
 
         expect(response.ok()).toBeTruthy();
         expect(body.status).toBe('SUCCESS');
         expect(body.statusCode).toBe('0');
 
-        console.log(`PASS: Paid ${billTotal} CRC to invoice ${invoiceId}`);
+        console.log(`PASS: Payment accepted for invoice ${oldestInvoice.invoiceId}`);
+
+        let closedInvoice: InvoiceInfo | null = null;
+
+        for (let attempt = 1; attempt <= 10; attempt++) {
+            console.log(`Checking invoice ${oldestInvoice.invoiceId} status: ${attempt}/10`);
+
+            await openBills();
+
+            const invoicesAfter = await readInvoices();
+            closedInvoice = invoicesAfter.find(invoice => invoice.invoiceId === oldestInvoice.invoiceId) ?? null;
+
+            if (closedInvoice) {
+                console.log(`Invoice Status: ${closedInvoice.status}`);
+                console.log(`Outstanding Due: ${closedInvoice.due}`);
+            }
+
+            if (closedInvoice?.status === 'CLOSED' && closedInvoice.due === 0) break;
+
+            if (attempt < 10) await page.waitForTimeout(5000);
+        }
+
+        expect(closedInvoice, `Invoice ${oldestInvoice.invoiceId} not found after payment`).not.toBeNull();
+        expect(closedInvoice?.status, `Invoice ${oldestInvoice.invoiceId} did not reach CLOSED`).toBe('CLOSED');
+        expect(closedInvoice?.due, `Invoice ${oldestInvoice.invoiceId} still has outstanding balance`).toBe(0);
+
+        console.log('================================================');
+        console.log('PASS: OLDEST INVOICE PAID AND CLOSED');
+        console.log(`Account: ${accountId}`);
+        console.log(`Invoice ID: ${oldestInvoice.invoiceId}`);
+        console.log(`Period: ${oldestInvoice.startDate} -> ${oldestInvoice.endDate}`);
+        console.log(`Amount Paid: ${oldestInvoice.due} CRC`);
+        console.log('Final Invoice Status: CLOSED');
+        console.log('Final Outstanding Due: 0');
+        console.log('================================================');
 
         return {
-            startDate: previousMonthStart,
-            endDate: billingDate,
-            invoiceId,
-            billTotal
+            invoiceId: oldestInvoice.invoiceId,
+            startDate: oldestInvoice.startDate,
+            endDate: oldestInvoice.endDate,
+            amount: oldestInvoice.due
         };
     };
 
+
     // ============================================================
-    // INCOMPLETE ORDER HELPERS
-    // SUSPEND / RESUME
+    // INCOMPLETE ORDER
     // ============================================================
 
     const getIncompleteOrder = async (orderType: 'SUSPEND' | 'RESUME') => {
@@ -727,21 +631,16 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
         await expect(page.getByRole('heading', { name: 'In-complete Orders' })).toBeVisible();
 
         for (let attempt = 1; attempt <= 10; attempt++) {
-            console.log(`Checking for ${orderType} order: ${attempt}/10`);
-
             const orderRow = page.getByRole('row').filter({ hasText: orderType }).filter({ hasText: 'ORD-' }).last();
 
             if (await orderRow.isVisible().catch(() => false)) {
                 const rowText = await orderRow.innerText();
                 const orderMatch = rowText.match(/ORD-[A-Za-z0-9-]+/);
 
-                if (!orderMatch) throw new Error(`Could not find ${orderType} ORD- number in row: ${rowText}`);
+                if (!orderMatch) throw new Error(`Could not find ${orderType} order ID: ${rowText}`);
 
-                const orderId = orderMatch[0];
-
-                console.log(`PASS: ${orderType} order found: ${orderId}`);
-
-                return orderId;
+                console.log(`PASS: ${orderType} order found: ${orderMatch[0]}`);
+                return orderMatch[0];
             }
 
             await page.waitForTimeout(5000);
@@ -758,65 +657,44 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
 
         if (sequenceRows.length === 0) throw new Error(`No provisioning sequence found for ${orderId}`);
 
-        console.log(`Found ${sequenceRows.length} provisioning sequence row(s)`);
-
         await queryDatabase(`UPDATE core_oms.order_prov_sequence_list SET status = 'COMPLETED' WHERE id = $1`, [orderId]);
 
         const remainingRows = await queryDatabase(`SELECT * FROM core_oms.order_prov_sequence_list WHERE id = $1 AND status <> 'COMPLETED'`, [orderId]);
 
-        expect(remainingRows.length, `Provisioning sequence still has non-COMPLETED rows for ${orderId}`).toBe(0);
+        expect(remainingRows.length).toBe(0);
 
-        console.log(`PASS: All provisioning sequence rows COMPLETED for ${orderType} order ${orderId}`);
+        console.log(`PASS: Provisioning completed for ${orderId}`);
     };
 
-    const submitIncompleteOrder = async (orderId: string, orderType: 'SUSPEND' | 'RESUME') => {
-        console.log(`Submitting ${orderType} order ${orderId}...`);
+    const processOrder = async (orderType: 'SUSPEND' | 'RESUME') => {
+        const orderId = await getIncompleteOrder(orderType);
+
+        await completeOrderProvisioning(orderId, orderType);
 
         await page.waitForTimeout(3000);
         await expect(page.getByRole('button', { name: 'Submit order' })).toBeVisible();
         await page.getByRole('button', { name: 'Submit order' }).click();
 
-        console.log(`PASS: ${orderType} order ${orderId} submitted`);
+        await verifyServiceStatus(orderType === 'SUSPEND' ? 'SUSPENDED' : 'ACTIVE');
+
+        console.log(`PASS: ${orderType} order ${orderId} completed`);
+
+        return orderId;
     };
 
-    const processResumeOrder = async () => {
-        console.log('================================================');
-        console.log('PROCESSING RESUME ORDER');
-        console.log('================================================');
+    // ============================================================
+    // MANUAL SUSPEND / RESUME
+    // ============================================================
 
-        const resumeOrderId = await getIncompleteOrder('RESUME');
+    const executeManualOrder = async (orderType: 'SUSPEND' | 'RESUME') => {
+        await openServices();
 
-        await completeOrderProvisioning(resumeOrderId, 'RESUME');
-        await submitIncompleteOrder(resumeOrderId, 'RESUME');
-        await verifyServiceActive();
+        await page.getByRole('link', { name: orderType === 'SUSPEND' ? 'Suspend' : 'Resume', exact: true }).click();
+        await page.getByRole('button', { name: 'Create', exact: true }).click();
 
-        console.log('================================================');
-        console.log('PASS: RESUME PROCESS COMPLETE');
-        console.log(`Resume Order: ${resumeOrderId}`);
-        console.log('Service Status: ACTIVE');
-        console.log('================================================');
+        console.log(`PASS: Manual ${orderType} order created`);
 
-        return resumeOrderId;
-    };
-
-    const processSuspendOrder = async () => {
-        console.log('================================================');
-        console.log('PROCESSING SUSPEND ORDER');
-        console.log('================================================');
-
-        const suspendOrderId = await getIncompleteOrder('SUSPEND');
-
-        await completeOrderProvisioning(suspendOrderId, 'SUSPEND');
-        await submitIncompleteOrder(suspendOrderId, 'SUSPEND');
-        await verifyServiceSuspended();
-
-        console.log('================================================');
-        console.log('PASS: SUSPEND PROCESS COMPLETE');
-        console.log(`Suspend Order: ${suspendOrderId}`);
-        console.log('Service Status: SUSPENDED');
-        console.log('================================================');
-
-        return suspendOrderId;
+        return await processOrder(orderType);
     };
 
     // ============================================================
@@ -825,8 +703,6 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
 
     console.log('================================================');
     console.log(RUN_STEP === 0 ? 'TC08 MODE: FULL RUN' : `TC08 MODE: STEP ${RUN_STEP} ONLY`);
-    if (BILLING_DATE) console.log(`BILLING DATE: ${BILLING_DATE}`);
-    if (RESUME_COLLECTION) console.log('RESUME COLLECTION: TRUE');
     console.log('================================================');
 
     await page.goto('https://core-ui.demo.embrix.org/login');
@@ -838,26 +714,17 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
     console.log('PASS: Login successful');
 
     // ============================================================
-    // STEP 1
-    // VERIFY TC07 END STATE
+    // STEP 1 - VERIFY TC07 SUSPENDED STATE
     // ============================================================
 
     if (shouldRun(1)) {
         await test.step('1 - Verify TC07 suspended state', async () => {
-            await verifyServiceSuspended();
-
-            console.log('================================================');
-            console.log('PASS: TC07 END STATE CONFIRMED');
-            console.log(`Account: ${accountId}`);
-            console.log('Service: SUSPENDED');
-            console.log('================================================');
+            await verifyServiceStatus('SUSPENDED');
         });
     }
 
     // ============================================================
-    // STEP 2
-    // MONTH 03 BILLING
-    // GENERATES MONTH 02 INVOICE
+    // STEP 2 - RUN FIRST BILLING CYCLE
     // ============================================================
 
     if (shouldRun(2)) {
@@ -867,163 +734,193 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
     }
 
     // ============================================================
-    // STEP 3
-    // MONTH 03 COLLECTION
-    //
-    // CLEAN 16TH -> END OF MONTH BEFORE STARTING
-    // RUN COLLECTION CREATE
-    // RUN EMBRIX-GENERATED FIRST REMINDER
-    // PRESERVE EMBRIX-GENERATED NEXT ACTION
+    // STEP 3 - MONTH 03 COLLECTION THROUGH SUSPENSION
     // ============================================================
 
     if (shouldRun(3)) {
-        await test.step('3 - Run Month 03 collection', async () => {
-            if (!month03Bill) month03Bill = await recoverCheckpointBill(3);
+        await test.step('3 - Run Month 03 collection and complete suspension', async () => {
+            if (!month03Bill) {
+                if (!BILLING_DATE) throw new Error('RUN_STEP=3 requires BILLING_DATE');
+                month03Bill = await getStampedBillByPeriod(getPreviousMonthStart(BILLING_DATE), BILLING_DATE);
+            }
 
-            month03Collection = await runCollection(month03Bill.jobDate, 'MONTH 03');
+            const suspension = await runCollection(month03Bill, 'MONTH 03');
 
             console.log('================================================');
-            console.log(`MONTH 03 COLLECTION START: ${month03Collection.day16}`);
-            console.log(`MONTH 03 FIRST REMINDER: ${month03Collection.firstReminderDate}`);
-            console.log(`MONTH 03 NEXT ACTION: ${month03Collection.nextActionDate}`);
+            console.log('MONTH 03 - EXECUTING AUTOMATIC SUSPENSION');
+            console.log(`Next Action: ${suspension.action}`);
+            console.log(`Suspension Date: ${suspension.nextActionDate}`);
+            console.log('================================================');
+
+            expect(suspension.action).toBe('INACTIVATE_SUBSCRIPTION');
+
+            await setCcpTime(suspension.nextActionDate);
+            await runExistingDailyJob(suspension.nextActionDate);
+
+            console.log('Looking for automatic SUSPEND order...');
+
+            const suspendOrderId = await processOrder('SUSPEND');
+
+            await verifyServiceStatus('SUSPENDED');
+
+            console.log('================================================');
+            console.log('PASS: MONTH 03 COLLECTION AND SUSPENSION COMPLETE');
+            console.log(`Bill Period: ${month03Bill.startDate} -> ${month03Bill.endDate}`);
+            console.log(`Suspension Date: ${suspension.nextActionDate}`);
+            console.log(`Suspend Order: ${suspendOrderId}`);
+            console.log('Service Status: SUSPENDED');
             console.log('================================================');
         });
     }
 
+
+
     // ============================================================
-    // STEP 4
-    // PAY MONTH 02
-    //
-    // TC08 EXPECTATION:
-    // SERVICE REMAINS SUSPENDED
+    // STEP 4 - PAY MONTH 02, REMAIN SUSPENDED
     // ============================================================
 
     if (shouldRun(4)) {
-        await test.step('4 - Pay Month 02 and verify still suspended', async () => {
-            if (!month03Bill) month03Bill = await recoverCheckpointBill(4);
+        await test.step('4 - Pay Month 02 invoice and remain suspended', async () => {
+            if (!month03Bill) {
+                if (!BILLING_DATE) throw new Error('RUN_STEP=4 requires BILLING_DATE');
+                month03Bill = await getStampedBillByPeriod(getPreviousMonthStart(BILLING_DATE), BILLING_DATE);
+            }
 
-            const month02Payment = await payPreviousMonthBill(month03Bill.jobDate);
+            await verifyServiceStatus('SUSPENDED');
 
-            await verifyServiceSuspended();
+            const expectedStart = getPreviousMonthStart(month03Bill.startDate);
+            const expectedEnd = month03Bill.startDate;
+
+            const payment = await payBill(expectedStart, expectedEnd);
+
+            await verifyServiceStatus('SUSPENDED');
 
             console.log('================================================');
-            console.log('PASS: MONTH 02 INVOICE PAID');
-            console.log(`Invoice: ${month02Payment.invoiceId}`);
-            console.log('PASS: Service remained SUSPENDED');
+            console.log('PASS: MONTH 02 PAYMENT COMPLETE');
+            console.log(`Paid Invoice: ${payment.invoiceId}`);
+            console.log(`Period: ${payment.startDate} -> ${payment.endDate}`);
+            console.log('Service Status: SUSPENDED');
+            console.log('NEXT: MONTH 04 BILLING');
             console.log('================================================');
         });
     }
 
+
     // ============================================================
-    // STEP 5
-    // MONTH 04 BILLING
-    // MONTH 03 INVOICE STILL UNPAID
+    // STEP 5 - RUN SECOND BILLING CYCLE
     // ============================================================
 
     if (shouldRun(5)) {
         await test.step('5 - Run Month 04 billing', async () => {
             month04Bill = await runNextBillingCycle('MONTH 04');
+
+            console.log('================================================');
+            console.log('PASS: MONTH 04 BILLING COMPLETE');
+            console.log(`Bill Period: ${month04Bill.startDate} -> ${month04Bill.endDate}`);
+            console.log(`Due Date: ${month04Bill.dueDate}`);
+            console.log('================================================');
         });
     }
 
     // ============================================================
-    // STEP 6
-    // PAY MONTH 03
-    //
-    // PAYMENT GENERATES RESUME ORDER
-    // MANUALLY COMPLETE RESUME PROVISIONING
-    // SUBMIT RESUME ORDER
-    // VERIFY ACTIVE
+    // STEP 6 - PAY FIRST GENERATED BILL AND RECONNECT
     // ============================================================
 
     if (shouldRun(6)) {
-        await test.step('6 - Pay Month 03 and reconnect service', async () => {
-            if (!month04Bill) month04Bill = await recoverCheckpointBill(6);
+        await test.step('6 - Pay previous invoice and reconnect service', async () => {
+            if (!month04Bill) {
+                if (!BILLING_DATE) throw new Error('RUN_STEP=6 requires BILLING_DATE');
+                month04Bill = await getStampedBillByPeriod(getPreviousMonthStart(BILLING_DATE), BILLING_DATE);
+            }
 
-            const month03Payment = await payPreviousMonthBill(month04Bill.jobDate);
+            const expectedStart = getPreviousMonthStart(month04Bill.startDate);
+            const expectedEnd = month04Bill.startDate;
 
-            console.log('Waiting for RESUME order to be generated...');
+            const payment = await payBill(expectedStart, expectedEnd);
 
+            console.log('Waiting for automatic RESUME order to be generated...');
             await page.waitForTimeout(5000);
 
-            const resumeOrderId = await processResumeOrder();
+            const resumeOrderId = await processOrder('RESUME');
 
             console.log('================================================');
-            console.log('PASS: MONTH 03 INVOICE PAID');
-            console.log(`Invoice: ${month03Payment.invoiceId}`);
+            console.log('PASS: PREVIOUS INVOICE PAID AND CLOSED');
+            console.log(`Invoice: ${payment.invoiceId}`);
+            console.log(`Period: ${payment.startDate} -> ${payment.endDate}`);
             console.log(`Resume Order: ${resumeOrderId}`);
-            console.log('PASS: Service reconnected and is ACTIVE');
+            console.log('Service Status: ACTIVE');
             console.log('================================================');
         });
     }
 
     // ============================================================
-    // STEP 7
-    // MONTH 04 COLLECTION
-    //
-    // SERVICE IS ACTIVE
-    //
-    // CLEAN ONLY BEFORE COLLECTION START
-    // AFTER THAT PRESERVE EMBRIX-GENERATED JOBS
+    // STEP 7 - SECOND BILL COLLECTION THROUGH FIRST REMINDER
     // ============================================================
 
     if (shouldRun(7)) {
-        await test.step('7 - Run Month 04 collection', async () => {
-            if (!month04Bill) month04Bill = await recoverCheckpointBill(7);
+        await test.step('7 - Run Month 04 collection through first reminder', async () => {
+            if (!month04Bill) {
+                if (!BILLING_DATE) throw new Error('RUN_STEP=7 requires BILLING_DATE');
+                month04Bill = await getStampedBillByPeriod(getPreviousMonthStart(BILLING_DATE), BILLING_DATE);
+            }
 
-            month04Collection = await runCollection(month04Bill.jobDate, 'MONTH 04');
+            await verifyServiceStatus('ACTIVE');
+            await runCollection(month04Bill, 'MONTH 04');
 
             console.log('================================================');
-            console.log(`MONTH 04 COLLECTION START: ${month04Collection.day16}`);
-            console.log(`MONTH 04 FIRST REMINDER: ${month04Collection.firstReminderDate}`);
-            console.log(`MONTH 04 SUSPENSION ACTION: ${month04Collection.nextActionDate}`);
+            console.log('PASS: MONTH 04 COLLECTION THROUGH FIRST REMINDER');
+            console.log(`Bill Period: ${month04Bill.startDate} -> ${month04Bill.endDate}`);
+            console.log(`Collection Start: ${month04Bill.dueDate}`);
             console.log('================================================');
         });
     }
 
     // ============================================================
-    // STEP 8
-    // RUN EMBRIX-GENERATED SUSPENSION JOB
-    //
-    // DO NOT DELETE / RECREATE JOB
-    //
-    // THEN PROCESS GENERATED SUSPEND ORDER
+    // STEP 8 - MANUALLY SUSPEND ACTIVE SERVICE
     // ============================================================
 
     if (shouldRun(8)) {
-        await test.step('8 - Run suspension action and suspend service', async () => {
-            if (!month04Bill) month04Bill = await recoverCheckpointBill(8);
+        await test.step('8 - Manually suspend active service', async () => {
+            await verifyServiceStatus('ACTIVE');
 
-            let suspensionDate = '';
-
-            if (month04Collection) {
-                suspensionDate = month04Collection.nextActionDate;
-            } else {
-                const suspensionAction = await getCollectionInfo('INACTIVATE_SUBSCRIPTION');
-                suspensionDate = suspensionAction.nextActionDate;
-            }
+            const suspendOrderId = await executeManualOrder('SUSPEND');
 
             console.log('================================================');
-            console.log(`SUSPENSION ACTION DATE: ${suspensionDate}`);
-            console.log('================================================');
-
-            // EMBRIX CREATED THIS JOB.
-            // DO NOT DELETE OR CREATE.
-
-            await setCcpTime(suspensionDate);
-            await runExistingDailyJob(suspensionDate);
-
-            console.log('Waiting for SUSPEND order to be generated...');
-
-            await page.waitForTimeout(5000);
-
-            const suspendOrderId = await processSuspendOrder();
-
-            console.log('================================================');
-            console.log('PASS: STEP 8 COMPLETE');
-            console.log(`Suspension Date: ${suspensionDate}`);
+            console.log('PASS: MANUAL SUSPENSION COMPLETE');
             console.log(`Suspend Order: ${suspendOrderId}`);
             console.log('Service Status: SUSPENDED');
+            console.log('================================================');
+        });
+    }
+
+    // ============================================================
+    // STEP 9 - PAY SECOND GENERATED BILL AND MANUALLY RESUME
+    // ============================================================
+
+    if (shouldRun(9)) {
+        await test.step('9 - Pay current invoice and manually resume', async () => {
+            if (!month04Bill) {
+                if (!BILLING_DATE) throw new Error('RUN_STEP=9 requires BILLING_DATE');
+                month04Bill = await getStampedBillByPeriod(getPreviousMonthStart(BILLING_DATE), BILLING_DATE);
+            }
+
+            await verifyServiceStatus('SUSPENDED');
+
+            const payment = await payBill(month04Bill.startDate, month04Bill.endDate);
+
+            await verifyServiceStatus('SUSPENDED');
+
+            const resumeOrderId = await executeManualOrder('RESUME');
+
+            console.log('================================================');
+            console.log('PASS: TC08 COMPLETED THROUGH MANUAL RECONNECTION');
+            console.log(`Account: ${accountId}`);
+            console.log(`Paid Invoice: ${payment.invoiceId}`);
+            console.log(`Period: ${payment.startDate} -> ${payment.endDate}`);
+            console.log('Invoice Status: CLOSED');
+            console.log(`Resume Order: ${resumeOrderId}`);
+            console.log('Final Service Status: ACTIVE');
+            console.log('STOP: MONTH 05 NOT STARTED');
             console.log('================================================');
         });
     }

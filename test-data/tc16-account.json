@@ -1,0 +1,50 @@
+{
+    "userId": "KCONG",
+    "firstName": "Kiet",
+    "lastName": "Cong",
+    "organization": "",
+    "commercialName": "",
+    "accountId": "256367_1",
+    "orderId": "813563_1",
+    "email": "saray.mora@congerotechnology.com",
+    "country": "Costa Rica",
+    "landmark": "",
+    "state": "GUANACASTE",
+    "extraLine": "",
+    "postalCode": "50101",
+    "city": "LIBERIA",
+    "phone": "60161554",
+    "street": "Pruebaa",
+    "district": "LIBERIA",
+    "orderType": "NEW",
+    "collectionProfile": "Normal",
+    "billingOnlyFlag": "true",
+    "partyId": "109225",
+    "groupId": "",
+    "accounttype": "INTERCOMPANY",
+    "customAccountType": "PHC",
+    "identity": "503830816",
+    "identityDocument": "CÉDULA DE IDENTIDAD",
+    "staticIpRented": "false",
+    "paymentProfiles": [
+        {
+            "paymentMethod": "CHECK"
+        }
+    ],
+    "services": [
+        {
+            "bundleId": "BDL_PHC_Q1_INT",
+            "packageId": "",
+            "serviceType": "INTERNET",
+            "action": "ADD",
+            "quantity": "1"
+        },
+        {
+            "bundleId": "BDL_PHC_Q1_DISP",
+            "packageId": "",
+            "serviceType": "INTERNET",
+            "action": "ADD",
+            "quantity": "1"
+        }
+    ]
+}

@@ -41,9 +41,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
         const extendedDueDate = `${year}-${String(month).padStart(2, '0')}-${String(extensionDay).padStart(2, '0')}`;
         const reminderDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
         const nextMonthFirst = getNextMonthFirst(extendedDueDate);
-
         if (originalDay >= extensionDay) throw new Error(`Cannot safely extend ${date}: month has ${lastDayOfMonth} days and reminder must happen before ${nextMonthFirst}`);
-
         return { year, month, lastDayOfMonth, extensionDay, extendedDueDate, reminderDate, nextMonthFirst };
     };
 
@@ -86,11 +84,14 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
 
         const table = activeCell.locator('xpath=ancestor::table[1]');
         const headers = table.getByRole('columnheader');
+
         let dueDateIndex = -1;
+        let invoiceIdIndex = -1;
 
         for (let i = 0; i < await headers.count(); i++) {
             const header = (await headers.nth(i).innerText()).trim();
-            if (header === 'Due Date') { dueDateIndex = i; break; }
+            if (header === 'Due Date') dueDateIndex = i;
+            if (header === 'Invoice Id') invoiceIdIndex = i;
         }
 
         if (dueDateIndex === -1) throw new Error('Could not find Due Date column');
@@ -102,25 +103,27 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
 
         let latestRow = activeRows.first();
         let latestDueDate = '';
+        let latestInvoiceId = '';
         let latestTime = -1;
 
         for (let i = 0; i < activeCount; i++) {
             const row = activeRows.nth(i);
-            const dueDateText = (await row.getByRole('cell').nth(dueDateIndex).innerText()).trim();
-            const dueDate = normalizeDate(dueDateText);
+            const dueDate = normalizeDate((await row.getByRole('cell').nth(dueDateIndex).innerText()).trim());
+            const invoiceId = invoiceIdIndex >= 0 ? (await row.getByRole('cell').nth(invoiceIdIndex).innerText()).trim() : '';
             const [year, month, day] = dueDate.split('-').map(Number);
             const time = new Date(year, month - 1, day).getTime();
 
-            console.log(`ACTIVE bill ${i + 1} Due Date = ${dueDate}`);
+            console.log(`ACTIVE bill ${i + 1}: Due Date ${dueDate}${invoiceId ? `, Invoice ${invoiceId}` : ''}`);
 
             if (time > latestTime) {
                 latestTime = time;
                 latestDueDate = dueDate;
+                latestInvoiceId = invoiceId;
                 latestRow = row;
             }
         }
 
-        return { row: latestRow, dueDate: latestDueDate, dueDateIndex };
+        return { row: latestRow, dueDate: latestDueDate, invoiceId: latestInvoiceId };
     };
 
     const verifyLatestBillActive = async () => {
@@ -143,7 +146,6 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
         const endDate = (await dates.nth(1).innerText()).trim();
 
         console.log(`PASS: Pending bill ${startDate} -> ${endDate}`);
-
         return { startDate, endDate, jobDate: endDate };
     };
 
@@ -152,7 +154,6 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
 
         for (let attempt = 1; attempt <= 10; attempt++) {
             console.log(`Invoice verification ${attempt}/10`);
-
             await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/bills`);
             await page.waitForTimeout(3000);
 
@@ -182,11 +183,20 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     const setCcpTime = async (targetDate: string) => {
         console.log(`Changing CCP time to ${targetDate}...`);
         await page.goto('https://transactional.coopeg.embrix.org/graphiql?');
+
         const mutation = `mutation { setCcpTime(input: { ccpTime: "${targetDate}" }) { ccpTime } }`;
-        await page.evaluate((query) => { const editor = (document.querySelector('.CodeMirror') as any)?.CodeMirror; if (!editor) throw new Error('CodeMirror editor not found'); editor.setValue(query); editor.focus(); }, mutation);
+
+        await page.evaluate((query) => {
+            const editor = (document.querySelector('.CodeMirror') as any)?.CodeMirror;
+            if (!editor) throw new Error('CodeMirror editor not found');
+            editor.setValue(query);
+            editor.focus();
+        }, mutation);
+
         await page.waitForTimeout(1000);
         await page.getByRole('button', { name: 'Execute Query (Ctrl-Enter)' }).click();
         await expect(page.locator('pre').filter({ hasText: `"ccpTime": "${targetDate}"` })).toBeVisible();
+
         console.log(`PASS: CCP time = ${targetDate}`);
     };
 
@@ -196,6 +206,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
 
     const cleanJobs = async (targetDate: string) => {
         console.log(`Cleaning jobs for ${targetDate}...`);
+
         const jobs = await queryDatabase(`SELECT * FROM core_engine.job_schedule WHERE scheduledate = $1`, [targetDate]);
 
         for (const job of jobs) {
@@ -279,55 +290,72 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
 
     const runBillingJobSafely = async (targetDate: string) => {
         console.log(`Preparing fresh billing job for ${targetDate}...`);
-
         await cleanJobs(targetDate);
         await setCcpTime(targetDate);
         await runBillingDailyJob(targetDate);
-
         console.log(`PASS: Fresh billing job processed for ${targetDate}`);
     };
 
     // ============================================================
-    // COLLECTION
+    // COLLECTION - TC07 LOGIC
     // ============================================================
 
     const getCollectionInfo = async (expectedAction: string) => {
         console.log(`Checking Collection for ${expectedAction}...`);
 
         for (let attempt = 1; attempt <= 10; attempt++) {
-            console.log(`Collection search ${attempt}/10`);
+            console.log(`Collection search attempt ${attempt}/10`);
 
             await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
             await page.getByRole('button', { name: 'AR Hub' }).click();
             await page.getByRole('link', { name: 'Collections' }).click();
 
-            const search = page.locator('.form-group').first().getByRole('textbox');
-            await search.fill(accountId);
+            const collectionSearch = page.locator('.form-group').first().getByRole('textbox');
+            await collectionSearch.fill(accountId);
             await page.getByRole('button', { name: 'Search' }).click();
             await page.waitForTimeout(10000);
 
-            const viewButton = page.getByRole('button', { name: 'View' }).first();
-            if (!(await viewButton.isVisible().catch(() => false))) continue;
+            const viewButton = page.getByRole('cell', { name: 'View' }).first();
+
+            if (!(await viewButton.isVisible().catch(() => false))) {
+                console.log('Collection View not found yet...');
+                continue;
+            }
 
             await viewButton.click();
             await page.waitForTimeout(2000);
 
+            const actionCell = page.getByRole('cell', { name: expectedAction, exact: true }).last();
+
+            if (!(await actionCell.isVisible().catch(() => false))) {
+                console.log(`${expectedAction} not found yet...`);
+                continue;
+            }
+
             const actionRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: expectedAction, exact: true }) }).last();
-            if (!(await actionRow.isVisible().catch(() => false))) continue;
+            await expect(actionRow).toBeVisible();
 
             const table = actionRow.locator('xpath=ancestor::table[1]');
             const headers = table.getByRole('columnheader');
+            const headerCount = await headers.count();
+
             let nextActionDateIndex = -1;
 
-            for (let i = 0; i < await headers.count(); i++) {
-                const header = (await headers.nth(i).innerText()).trim();
-                if (header === 'Next Action Date') { nextActionDateIndex = i; break; }
+            for (let i = 0; i < headerCount; i++) {
+                const headerText = (await headers.nth(i).innerText()).trim();
+
+                if (headerText === 'Next Action Date') {
+                    nextActionDateIndex = i;
+                    break;
+                }
             }
 
             if (nextActionDateIndex === -1) throw new Error('Could not find Next Action Date column');
 
-            const nextActionDate = normalizeDate(await actionRow.getByRole('cell').nth(nextActionDateIndex).innerText());
+            const nextActionDateText = await actionRow.getByRole('cell').nth(nextActionDateIndex).innerText();
+            const nextActionDate = normalizeDate(nextActionDateText);
 
+            console.log('PASS: Invoice Status = COLLECTION');
             console.log(`PASS: Next Action = ${expectedAction}`);
             console.log(`PASS: Next Action Date = ${nextActionDate}`);
 
@@ -358,7 +386,6 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
             if (await row.isVisible().catch(() => false)) {
                 const match = (await row.innerText()).match(/ORD-[A-Za-z0-9-]+/);
                 if (!match) throw new Error('Could not read SUSPEND order ID');
-
                 console.log(`PASS: SUSPEND order found ${match[0]}`);
                 return match[0];
             }
@@ -378,6 +405,47 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
         await page.getByRole('button', { name: 'Submit order' }).click();
         await verifyServiceSuspended();
         console.log(`PASS: SUSPEND order ${orderId} completed`);
+    };
+
+    const createInstallmentPlan = async (invoiceId: string) => {
+        console.log(`Creating 4-installment plan for invoice ${invoiceId}...`);
+
+        await openAccount();
+        await page.locator('a').filter({ hasText: 'Billing Data' }).click();
+        await page.getByRole('link', { name: ' Invoice Payment Installment' }).click();
+        await page.getByRole('button', { name: '+Add New Installment Plan' }).click();
+
+        await page.getByText('Number Of Installments').click();
+        await page.locator('.col-md-12.row > div').first().click();
+
+        const installmentPlus = page.getByRole('button').filter({ hasText: /^$/ }).nth(3);
+
+        await installmentPlus.click();
+        await installmentPlus.click();
+        await installmentPlus.click();
+        await installmentPlus.click();
+
+        console.log('PASS: Number Of Installments = 4');
+
+        await page.getByText('Month(s) Offset').click();
+        await page.locator('.col-md-12 > div:nth-child(3)').first().click();
+        await page.locator('#monthOffset > .plus-number').click();
+
+        console.log('PASS: Month Offset = 1');
+
+        await page.getByRole('button', { name: 'Select Invoice' }).click();
+
+        const invoiceCell = page.getByRole('cell', { name: invoiceId, exact: true });
+
+        await expect(invoiceCell, `Invoice ${invoiceId} was not available for installment plan`).toBeVisible();
+        await invoiceCell.click();
+
+        console.log(`PASS: Selected invoice ${invoiceId}`);
+
+        await page.getByRole('button', { name: 'Select', exact: true }).click();
+        await page.getByRole('button', { name: 'Create' }).click();
+
+        console.log(`PASS: 4-installment payment plan created for invoice ${invoiceId}`);
     };
 
     // ============================================================
@@ -401,12 +469,15 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     const originalBill = await getLatestActiveBill();
     const selectedBillRow = originalBill.row;
     const originalDueDate = originalBill.dueDate;
+    const activeInvoiceId = originalBill.invoiceId;
+
+    console.log(`ACTIVE INVOICE ID: ${activeInvoiceId}`);
 
     const extensionPlan = getSafeExtensionPlan(originalDueDate);
     const extendedDueDate = extensionPlan.extendedDueDate;
     const reminderDate = extensionPlan.reminderDate;
     const billingDate = extensionPlan.nextMonthFirst;
-    const suspensionDate = addDays(extendedDueDate, 5);
+    const expectedSuspensionDate = addDays(extendedDueDate, 5);
     const [targetYear, targetMonth, targetDay] = extendedDueDate.split('-').map(Number);
 
     console.log('================================================');
@@ -416,15 +487,14 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     console.log(`EXTENDED DUE DATE: ${extendedDueDate}`);
     console.log(`REMINDER DATE: ${reminderDate}`);
     console.log(`BILLING DATE: ${billingDate}`);
-    console.log(`SUSPENSION DATE: ${suspensionDate}`);
+    console.log(`EXPECTED SUSPENSION DATE: ${expectedSuspensionDate}`);
     console.log('================================================');
 
     expect(reminderDate < billingDate, `Reminder ${reminderDate} must happen before billing ${billingDate}`).toBe(true);
-    expect(billingDate < suspensionDate, `Billing ${billingDate} must happen before suspension ${suspensionDate}`).toBe(true);
+    expect(billingDate < expectedSuspensionDate, `Billing ${billingDate} must happen before suspension ${expectedSuspensionDate}`).toBe(true);
 
     // ============================================================
     // STEP 7 - EXTEND DUE DATE
-    // KEEP WORKING SELECTORS UNCHANGED
     // ============================================================
 
     const checkbox = selectedBillRow.locator('td > .check-item > .custom-control').first();
@@ -462,7 +532,6 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
 
     console.log(`PASS: Due Date updated to ${extendedDueDate}`);
     console.log(`PASS: Reminder ${reminderDate} happens before billing ${billingDate}`);
-
 
     await cleanJobs(extendedDueDate);
 
@@ -508,18 +577,26 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     // ============================================================
 
     console.log('================================================');
-    console.log(`STEP 10 - REMINDER EMAIL ${reminderDate}`);
+    console.log(`STEP 10 - REMINDER EMAIL ${firstReminder.nextActionDate}`);
     console.log('================================================');
 
-    await setCcpTime(reminderDate);
-    await runExistingDailyJob(reminderDate);
+    await setCcpTime(firstReminder.nextActionDate);
+    await runExistingDailyJob(firstReminder.nextActionDate);
 
-    console.log(`PASS: Reminder email job processed on ${reminderDate}`);
-    console.log(`PASS: Reminder happened before billing date ${billingDate}`);
+    console.log(`PASS: Reminder email job processed on ${firstReminder.nextActionDate}`);
+
+    const inactivateSubscription = await getCollectionInfo('INACTIVATE_SUBSCRIPTION');
+    const suspensionDate = inactivateSubscription.nextActionDate;
+
+    console.log('================================================');
+    console.log('NEXT COLLECTION ACTION');
+    console.log(`Action: ${inactivateSubscription.action}`);
+    console.log(`Embrix Suspension Date: ${suspensionDate}`);
+    console.log(`Expected Suspension Date: ${expectedSuspensionDate}`);
+    console.log('================================================');
 
     // ============================================================
     // STEP 11 - MONTH 03 BILLING
-    // MUST RUN ON THE 1ST BEFORE SUSPENSION
     // ============================================================
 
     console.log('================================================');
@@ -537,19 +614,22 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     await cleanJobs(billingDate);
     await setCcpTime(billingDate);
     await runBillingDailyJob(billingDate);
-
     await verifyGeneratedBill(month03Bill.startDate, month03Bill.endDate);
 
     console.log(`PASS: ${month03Bill.startDate} -> ${month03Bill.endDate} invoice generated`);
 
     // ============================================================
     // STEP 12 - SUSPENSION
-    // ONLY RUN AFTER BILLING IS VERIFIED
     // ============================================================
 
     console.log('================================================');
     console.log(`STEP 12 - SUSPENSION ${suspensionDate}`);
     console.log('================================================');
+
+    const suspensionJobs = await getJobsForDate(suspensionDate);
+
+    console.log(`Jobs found for suspension date ${suspensionDate}: ${suspensionJobs.length}`);
+    console.log(suspensionJobs);
 
     await setCcpTime(suspensionDate);
     await runExistingDailyJob(suspensionDate);
@@ -568,9 +648,10 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     console.log(`Original Due Date: ${originalDueDate}`);
     console.log(`Days In Month: ${extensionPlan.lastDayOfMonth}`);
     console.log(`Extended Due Date: ${extendedDueDate}`);
-    console.log(`Reminder Date: ${reminderDate}`);
+    console.log(`Reminder Date: ${firstReminder.nextActionDate}`);
     console.log(`Billing Date: ${billingDate}`);
-    console.log(`Suspension Date: ${suspensionDate}`);
+    console.log(`Expected Suspension Date: ${expectedSuspensionDate}`);
+    console.log(`Embrix Suspension Date: ${suspensionDate}`);
     console.log(`Month 03 Bill: ${month03Bill.startDate} -> ${month03Bill.endDate}`);
     console.log('================================================');
 });

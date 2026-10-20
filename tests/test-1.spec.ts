@@ -111,6 +111,7 @@ test('create account, create order, manually provision, and activate service', a
   console.log('Logging into Embrix...');
 
   await page.goto('https://core-ui.demo.embrix.org/login');
+  //await page.goto('https://core-ui.coopegsbx2.embrix.org/login');
   await page.getByRole('textbox', { name: 'Username' }).fill(username);
   await page.getByRole('textbox', { name: 'Password' }).fill(password);
   await page.getByRole('button', { name: 'Login' }).click();

@@ -17,6 +17,7 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
 
     const openAccount = async () => {
         await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        //await page.goto('https://core-ui.coopegsbx2.embrix.org/dashboard/me');
         await page.getByRole('button', { name: 'Customer Hub' }).click();
         await page.getByRole('link', { name: 'Customer Management' }).first().click();
 
@@ -91,6 +92,7 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
         console.log(`Changing CCP time to ${targetDate}...`);
 
         await page.goto('https://transactional.coopeg.embrix.org/graphiql?');
+        //await page.goto('https://service-transactional.coopegsbx2.embrix.org/graphiql?');
 
         const mutation = `mutation {
   setCcpTime(input: {
@@ -126,6 +128,7 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
         console.log(`Running DAILY jobs for ${targetDate}...`);
 
         await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        //await page.goto('https://core-ui.coopegsbx2.embrix.org/dashboard/me');
         await page.getByRole('button', { name: 'Operations Hub' }).click();
         await page.getByRole('link', { name: 'Jobs Management' }).click();
         await page.locator('#sidebarnav a').filter({ hasText: 'Jobs Management' }).click();
@@ -240,6 +243,7 @@ test('run next pending billing cycle and verify generated bill', async ({ page }
     // ============================================================
 
     await page.goto('https://core-ui.demo.embrix.org/login');
+    //await page.goto('https://core-ui.coopegsbx2.embrix.org/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
