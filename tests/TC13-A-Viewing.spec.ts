@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { ACCOUNT_ID } from '../test-data/testIds';
+import { env } from '../config/environments';
 
 test('TC13 - view latest Notify Cancellation to CRM date', async ({ page }) => {
     test.setTimeout(5 * 60 * 1000);
 
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
+    const username = env.username;
+    const password = env.password;
     const accountId = ACCOUNT_ID;
 
     if (!username || !password) throw new Error('Missing username or password');
@@ -35,7 +36,7 @@ test('TC13 - view latest Notify Cancellation to CRM date', async ({ page }) => {
     // ============================================================
 
     const openAccount = async () => {
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'Customer Hub' }).click();
         await page.getByRole('link', { name: 'Customer Management' }).first().click();
 
@@ -109,7 +110,7 @@ test('TC13 - view latest Notify Cancellation to CRM date', async ({ page }) => {
     // ============================================================
 
     const openCollection = async () => {
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'AR Hub' }).click();
         await page.getByRole('link', { name: 'Collections' }).click();
 
@@ -207,7 +208,7 @@ test('TC13 - view latest Notify Cancellation to CRM date', async ({ page }) => {
     // LOGIN
     // ============================================================
 
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
 
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);

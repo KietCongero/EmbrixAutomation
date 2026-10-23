@@ -1,14 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { queryDatabase } from '../helpers/database';
 import { ACCOUNT_ID } from '../test-data/testIds';
+import { env } from '../config/environments';
 
 test('billing cycle -> collection -> suspended service', async ({ page }) => {
     test.setTimeout(20 * 60 * 1000);
 
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
+    const username = env.username;
+    const password = env.password;
     const accountId = ACCOUNT_ID;
-    const dailyJobUrl = 'https://core-ui.demo.embrix.org/jobs-management/job-schedule/CJ-12';
+    const dailyJobUrl = '/jobs-management/job-schedule/CJ-12';
 
     if (!username || !password) throw new Error('Missing username or password');
 
@@ -27,7 +28,7 @@ test('billing cycle -> collection -> suspended service', async ({ page }) => {
     // ============================================================
 
     const openAccount = async () => {
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'Customer Hub' }).click();
         await page.getByRole('link', { name: 'Customer Management' }).first().click();
 
@@ -47,7 +48,7 @@ test('billing cycle -> collection -> suspended service', async ({ page }) => {
     const setCcpTime = async (targetDate: string) => {
         console.log(`Changing CCP time to ${targetDate}...`);
 
-        await page.goto('https://transactional.coopeg.embrix.org/graphiql?');
+        await page.goto(env.graphiqlUrl);
 
         const mutation = `mutation {
   setCcpTime(input: {
@@ -191,7 +192,7 @@ test('billing cycle -> collection -> suspended service', async ({ page }) => {
     const runBillingDailyJob = async (targetDate: string) => {
         console.log(`Running BILLING DAILY job for ${targetDate}...`);
 
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'Operations Hub' }).click();
         await page.getByRole('link', { name: 'Jobs Management' }).click();
         await page.locator('#sidebarnav a').filter({ hasText: 'Jobs Management' }).click();
@@ -375,7 +376,7 @@ test('billing cycle -> collection -> suspended service', async ({ page }) => {
             console.log('================================================');
 
             try {
-                await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+                await page.goto('/dashboard/me');
                 await page.getByRole('button', { name: 'AR Hub' }).click();
                 await page.getByRole('link', { name: 'Collections' }).click();
 
@@ -510,7 +511,7 @@ test('billing cycle -> collection -> suspended service', async ({ page }) => {
             console.log('================================================');
 
             try {
-                await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+                await page.goto('/dashboard/me');
                 await page.getByRole('button', { name: 'AR Hub' }).click();
                 await page.getByRole('link', { name: 'Collections' }).click();
 
@@ -707,7 +708,7 @@ test('billing cycle -> collection -> suspended service', async ({ page }) => {
     // LOGIN
     // ============================================================
 
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();

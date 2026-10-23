@@ -1,15 +1,16 @@
 import { test, expect, Page } from '@playwright/test';
 import { queryDatabase } from '../helpers/database';
 import { ACCOUNT_ID } from '../test-data/testIds';
+import { env } from '../config/environments';
 
-const DAILY_JOB_URL = 'https://core-ui.demo.embrix.org/jobs-management/job-schedule/CJ-12';
-const username = process.env.EMBRIX_USERNAME;
-const password = process.env.EMBRIX_PASSWORD;
+const DAILY_JOB_URL = '/jobs-management/job-schedule/CJ-12';
+const username = env.username;
+const password = env.password;
 
 if (!username || !password) throw new Error('Missing username or password');
 
 async function login(page: Page) {
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username!);
     await page.getByRole('textbox', { name: 'Password' }).fill(password!);
     await page.getByRole('button', { name: 'Login' }).click();
@@ -18,7 +19,7 @@ async function login(page: Page) {
 }
 
 async function openAccount(page: Page) {
-    await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+    await page.goto('/dashboard/me');
     await page.getByRole('button', { name: 'Customer Hub' }).click();
     await page.getByRole('link', { name: 'Customer Management' }).first().click();
 
@@ -100,7 +101,7 @@ async function getPendingBillEndDate(page: Page) {
 }
 
 async function setCcpTime(page: Page, targetDate: string) {
-    await page.goto('https://transactional.coopeg.embrix.org/graphiql?');
+    await page.goto(env.graphiqlUrl);
 
     const mutation = `mutation {
   setCcpTime(input: {
@@ -178,7 +179,7 @@ async function createAndRunDailyJob(page: Page, targetDate: string) {
 }
 
 async function getCollectionInfo(page: Page) {
-    await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+    await page.goto('/dashboard/me');
     await page.getByRole('button', { name: 'AR Hub' }).click();
     await page.getByRole('link', { name: 'Collections' }).click();
 

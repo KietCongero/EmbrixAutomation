@@ -1,14 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { ACCOUNT_ID } from '../test-data/testIds';
 import { queryDatabase } from '../helpers/database';
+import { env } from '../config/environments';
 
 test('TC10 - due date extension, collection, reminder and suspension', async ({ page }) => {
     test.setTimeout(20 * 60 * 1000);
 
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
+    const username = env.username;
+    const password = env.password;
     const accountId = ACCOUNT_ID;
-    const dailyJobUrl = 'https://core-ui.demo.embrix.org/jobs-management/job-schedule/CJ-12';
+    const dailyJobUrl = '/jobs-management/job-schedule/CJ-12';
 
     if (!username || !password) throw new Error('Missing EMBRIX_USERNAME or EMBRIX_PASSWORD');
 
@@ -58,7 +59,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     // ============================================================
 
     const openAccount = async () => {
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'Customer Hub' }).click();
         await page.getByRole('link', { name: 'Customer Management' }).first().click();
         const search = page.locator('.form-group').first().getByRole('textbox');
@@ -127,7 +128,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     };
 
     const verifyLatestBillActive = async () => {
-        await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/bills`);
+        await page.goto(`/customers/${accountId}/bills`);
         const bill = await getLatestActiveBill();
         console.log(`PASS: Invoice remains ACTIVE with Due Date ${bill.dueDate}`);
         return bill;
@@ -154,7 +155,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
 
         for (let attempt = 1; attempt <= 10; attempt++) {
             console.log(`Invoice verification ${attempt}/10`);
-            await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/bills`);
+            await page.goto(`/customers/${accountId}/bills`);
             await page.waitForTimeout(3000);
 
             const rows = page.getByRole('row');
@@ -182,7 +183,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
 
     const setCcpTime = async (targetDate: string) => {
         console.log(`Changing CCP time to ${targetDate}...`);
-        await page.goto('https://transactional.coopeg.embrix.org/graphiql?');
+        await page.goto(env.graphiqlUrl);
 
         const mutation = `mutation { setCcpTime(input: { ccpTime: "${targetDate}" }) { ccpTime } }`;
 
@@ -306,7 +307,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
         for (let attempt = 1; attempt <= 10; attempt++) {
             console.log(`Collection search attempt ${attempt}/10`);
 
-            await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+            await page.goto('/dashboard/me');
             await page.getByRole('button', { name: 'AR Hub' }).click();
             await page.getByRole('link', { name: 'Collections' }).click();
 
@@ -452,7 +453,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     // LOGIN
     // ============================================================
 
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
@@ -464,7 +465,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     // READ ACTIVE BILL
     // ============================================================
 
-    await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/bills`);
+    await page.goto(`/customers/${accountId}/bills`);
 
     const originalBill = await getLatestActiveBill();
     const selectedBillRow = originalBill.row;
@@ -524,7 +525,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     console.log(`PASS: Due date extension submitted ${originalDueDate} -> ${extendedDueDate}`);
 
     await page.waitForTimeout(2000);
-    await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/bills`);
+    await page.goto(`/customers/${accountId}/bills`);
 
     const updatedBill = await getLatestActiveBill();
 

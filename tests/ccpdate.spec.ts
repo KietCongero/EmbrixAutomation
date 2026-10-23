@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { env } from '../config/environments';
 
 test('billing setup - get effective date and change CCP time', async ({ page }) => {
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
+    const username = env.username;
+    const password = env.password;
 
     const accountId = '9000040';
 
@@ -11,7 +12,7 @@ test('billing setup - get effective date and change CCP time', async ({ page }) 
     }
 
     // Login
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
 
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
@@ -79,9 +80,7 @@ test('billing setup - get effective date and change CCP time', async ({ page }) 
     console.log(`Target billing date: ${targetDate}`);
 
     // Go to GraphiQL
-    await page.goto(
-        'https://transactional.coopeg.embrix.org/graphiql?'
-    );
+    await page.goto(env.graphiqlUrl);
 
     const mutation = `mutation {
   setCcpTime(input: {

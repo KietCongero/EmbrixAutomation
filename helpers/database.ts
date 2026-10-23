@@ -1,11 +1,12 @@
 import { Pool, QueryResultRow } from 'pg';
+import { env } from '../config/environments';
 
 const pool = new Pool({
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT ?? 5432),
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
+    host: env.db.host,
+    port: env.db.port,
+    database: env.db.database,
+    user: env.db.user,
+    password: env.db.password,
     ssl: {
         rejectUnauthorized: false,
     },

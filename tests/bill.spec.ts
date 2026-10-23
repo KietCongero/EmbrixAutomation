@@ -1,27 +1,27 @@
 import { test, expect } from '@playwright/test';
 import { ACCOUNT_ID } from '../test-data/testIds';
+import { env } from '../config/environments';
 
 test('read bill and apply payment', async ({ page, request }) => {
     test.setTimeout(2 * 60 * 1000);
 
     /*
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
+    const username = env.username;
+    const password = env.password;
     const accountId = ACCOUNT_ID;
     */
-    const username = process.env.OCI_USERNAME;
-    const password = process.env.OCI_PASSWORD;
+    const username = env.ociUsername;
+    const password = env.ociPassword;
     const accountId = ACCOUNT_ID;
 
-    const apiToken = process.env.EMBRIX_API_TOKEN;
+    const apiToken = env.apiToken;
 
-    const paymentUrl = 'https://crm-gateway.coopegsbx.embrix.org/applyPayment';
+    const paymentUrl = env.api.applyPayment;
 
     if (!username || !password || !apiToken) throw new Error('Missing environment variables');
 
     // Login
-    // await page.goto('https://core-ui.coopegsbx.embrix.org/login');
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();

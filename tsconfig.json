@@ -9,10 +9,14 @@
             "@playwright/test"
         ],
         "esModuleInterop": true,
+        "resolveJsonModule": true,
         "skipLibCheck": true
     },
     "include": [
         "tests/**/*.ts",
+        "helpers/**/*.ts",
+        "config/**/*.ts",
+        "test-data/**/*.ts",
         "playwright.config.ts"
     ]
 }

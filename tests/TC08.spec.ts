@@ -1,17 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { queryDatabase } from '../helpers/database';
 import { ACCOUNT_ID } from '../test-data/testIds';
+import { env } from '../config/environments';
 test('TC08 - billing, collections, payments, suspension and reconnection', async ({ page, request }) => {
     test.setTimeout(40 * 60 * 1000);
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
-    const apiToken = process.env.EMBRIX_API_TOKEN;
+    const username = env.username;
+    const password = env.password;
+    const apiToken = env.apiToken;
     const accountId = ACCOUNT_ID;
     const RUN_STEP = process.env.RUN_STEP ? Number(process.env.RUN_STEP) : 0;
     const BILLING_DATE = process.env.BILLING_DATE;
     const RESUME_COLLECTION = process.env.RESUME_COLLECTION === 'true';
-    const dailyJobUrl = 'https://core-ui.demo.embrix.org/jobs-management/job-schedule/CJ-12';
-    const paymentUrl = 'https://crm-gateway.coopegsbx.embrix.org/applyPayment';
+    const dailyJobUrl = '/jobs-management/job-schedule/CJ-12';
+    const paymentUrl = env.api.applyPayment;
     if (!username || !password || !apiToken) throw new Error('Missing environment variables');
     if (!Number.isInteger(RUN_STEP) || RUN_STEP < 0 || RUN_STEP > 15) throw new Error(`Invalid RUN_STEP: ${RUN_STEP}`);
     const shouldRun = (step: number) => RUN_STEP === 0 || RUN_STEP === step;
@@ -51,7 +52,7 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
     // ACCOUNT
     // ============================================================
     const openAccount = async () => {
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'Customer Hub' }).click();
         await page.getByRole('link', { name: 'Customer Management' }).first().click();
         const accountSearch = page.locator('.form-group').first().getByRole('textbox');
@@ -89,7 +90,7 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
     // ============================================================
     const setCcpTime = async (targetDate: string) => {
         console.log(`Changing CCP time to ${targetDate}...`);
-        await page.goto('https://transactional.coopeg.embrix.org/graphiql?');
+        await page.goto(env.graphiqlUrl);
         const mutation = `mutation {
             setCcpTime(input: {
                 ccpTime: "${targetDate}"
@@ -185,7 +186,7 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
     // BILLING
     // ============================================================
     const getNextPendingBill = async () => {
-        await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/bills`);
+        await page.goto(`/customers/${accountId}/bills`);
         console.log('Looking for next PENDING bill...');
         const pendingBillRow = page.getByRole('row').filter({
             has: page.getByRole('cell', { name: 'PENDING', exact: true })
@@ -199,7 +200,7 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
     };
     const runBillingDailyJob = async (targetDate: string) => {
         console.log(`Running billing DAILY job for ${targetDate}...`);
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'Operations Hub' }).click();
         await page.getByRole('link', { name: 'Jobs Management' }).click();
         await page.locator('#sidebarnav a').filter({ hasText: 'Jobs Management' }).click();
@@ -234,7 +235,7 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
         }
     };
     const getStampedBillByPeriod = async (startDate: string, endDate: string): Promise<BillInfo> => {
-        await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/bills`);
+        await page.goto(`/customers/${accountId}/bills`);
         console.log(`Looking for STAMPED bill ${startDate} -> ${endDate}...`);
         let billRow = page.getByRole('row').filter({ hasText: startDate }).filter({ hasText: endDate }).filter({ hasText: 'STAMPED' }).first();
         for (let attempt = 1; attempt <= 10; attempt++) {
@@ -280,7 +281,7 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
         const maximumDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
         for (let attempt = 1; attempt <= 10; attempt++) {
             console.log(`Collection search ${attempt}/10: ${minimumDate} -> ${maximumDate}`);
-            await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+            await page.goto('/dashboard/me');
             await page.getByRole('button', { name: 'AR Hub' }).click();
             await page.getByRole('link', { name: 'Collections' }).click();
             const collectionSearch = page.locator('.form-group').first().getByRole('textbox');
@@ -351,7 +352,7 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
     // BILL PAYMENT - READ ACTUAL INVOICE TABLE
     // ============================================================
     const openBills = async () => {
-        await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/bills`);
+        await page.goto(`/customers/${accountId}/bills`);
         await expect(page.getByRole('row').filter({ hasText: 'STAMPED' }).first()).toBeVisible();
     };
     const readInvoices = async (): Promise<InvoiceInfo[]> => {
@@ -549,7 +550,7 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
     console.log('================================================');
     console.log(RUN_STEP === 0 ? 'TC08 MODE: FULL RUN' : `TC08 MODE: STEP ${RUN_STEP} ONLY`);
     console.log('================================================');
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();

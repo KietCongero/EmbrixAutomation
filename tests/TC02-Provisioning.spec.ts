@@ -1,17 +1,19 @@
 import { test, expect } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { queryDatabase } from '../helpers/database';
+import { ACCOUNT_ID, ORDER_ID } from '../test-data/testIds';
+import { env } from '../config/environments';
 
 test('create order, manually provision, and submit order', async ({ page }) => {
     test.setTimeout(20 * 60 * 1000);
 
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
+    const username = env.username;
+    const password = env.password;
 
-    const accountId = '9000040';
-    const orderId = `ORD${accountId}`;
-    const provisioningId = 'ALCLB3A97FBA';
-    const ontModel = 'G-240W-G';
+    const accountId = ACCOUNT_ID;
+    const orderId = ORDER_ID;
+    const provisioningId = env.provisioningId;
+    const ontModel = env.ontModel;
 
     if (!username || !password) {
         throw new Error('Missing username or password');
@@ -75,7 +77,7 @@ test('create order, manually provision, and submit order', async ({ page }) => {
     console.log('Starting Embrix automation...');
 
     // Login
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();

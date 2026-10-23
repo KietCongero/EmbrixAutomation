@@ -2,12 +2,13 @@
 import { test, expect } from '@playwright/test';
 import { queryDatabase } from '../helpers/database';
 import { ACCOUNT_ID } from '../test-data/testIds';
+import { env } from '../config/environments';
 
 test('Manual Suspension and Manual Resume', async ({ page }) => {
     test.setTimeout(20 * 60 * 1000);
 
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
+    const username = env.username;
+    const password = env.password;
     const accountId = ACCOUNT_ID;
 
     if (!username || !password) throw new Error('Missing username or password');
@@ -17,7 +18,7 @@ test('Manual Suspension and Manual Resume', async ({ page }) => {
     // ============================================================
 
     const openServices = async () => {
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'Customer Hub' }).click();
         await page.getByRole('link', { name: 'Customer Management' }).first().click();
 
@@ -150,7 +151,7 @@ test('Manual Suspension and Manual Resume', async ({ page }) => {
     // LOGIN
     // ============================================================
 
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();

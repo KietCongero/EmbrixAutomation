@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { env } from '../config/environments';
 
 test('run billing jobs and wait for INVOICE_CHECK error', async ({ page }) => {
     test.setTimeout(10 * 60 * 1000);
 
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
+    const username = env.username;
+    const password = env.password;
 
     const targetDate = '2026-11-01';
 
@@ -13,7 +14,7 @@ test('run billing jobs and wait for INVOICE_CHECK error', async ({ page }) => {
     }
 
     // Login
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
 
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);

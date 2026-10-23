@@ -2,8 +2,9 @@ import { test, expect } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 
 import accountTemplate from '../test-data/tc13-account.json';
-import { ACCOUNT_ID, ORDER_ID } from '../test-data/testIds';
+import { allocateTestAccount } from '../helpers/accounts';
 import { queryDatabase } from '../helpers/database';
+import { env } from '../config/environments';
 
 test('create account, create order, manually provision, and activate service', async ({ request, page }) => {
   test.setTimeout(20 * 60 * 1000);
@@ -12,16 +13,15 @@ test('create account, create order, manually provision, and activate service', a
   // CONFIG
   // ============================================================
 
-  const apiUrl = process.env.EMBRIX_API_URL;
-  const apiToken = process.env.EMBRIX_API_TOKEN;
-  const username = process.env.EMBRIX_USERNAME;
-  const password = process.env.EMBRIX_PASSWORD;
+  const apiUrl = env.api.processAccountAndOrder;
+  const apiToken = env.apiToken;
+  const username = env.username;
+  const password = env.password;
 
-  const accountId = ACCOUNT_ID;
-  const orderId = ORDER_ID;
+  const { accountId, orderId } = await allocateTestAccount();
 
-  const provisioningId = 'ALCLB3A97FBA';
-  const ontModel = 'G-240W-G';
+  const provisioningId = env.provisioningId;
+  const ontModel = env.ontModel;
 
   if (!apiUrl || !apiToken) {
     throw new Error('Missing EMBRIX_API_URL or EMBRIX_API_TOKEN');
@@ -145,7 +145,7 @@ test('create account, create order, manually provision, and activate service', a
 
   console.log('Logging into Embrix...');
 
-  await page.goto('https://core-ui.demo.embrix.org/login');
+  await page.goto('/login');
 
   await page.getByRole('textbox', { name: 'Username' }).fill(username);
   await page.getByRole('textbox', { name: 'Password' }).fill(password);

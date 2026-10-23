@@ -2,31 +2,28 @@ import { test, expect } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import accountTemplate from '../test-data/tc01-account.json';
 import { queryDatabase } from '../helpers/database';
+import { allocateTestAccount } from '../helpers/accounts';
+import { env } from '../config/environments';
 
 test('environment check', async ({ request, page }) => {
     test.setTimeout(20 * 60 * 1000);
 
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
-    const apiUrl = process.env.EMBRIX_API_URL;
-    const apiToken = process.env.EMBRIX_API_TOKEN;
+    const username = env.username;
+    const password = env.password;
+    const apiUrl = env.api.processAccountAndOrder;
+    const apiToken = env.apiToken;
 
-    //Change this to run the cancelation and create new account of "RUN_NUMER+1"
-    const RUN_NUMBER = 116;
-
-    if (!RUN_NUMBER) throw new Error('Missing RUN_NUMBER');
-
-    const previousAccountId = String(9000000 + RUN_NUMBER);
-    const accountId = String(9000000 + RUN_NUMBER + 1);
-    const orderId = `ORD${accountId}`;
-
-    const provisioningId = 'ALCLB3A97FBA';
-    const ontModel = 'G-240W-G';
-    const uiUrl = 'https://core-ui.demo.embrix.org';
+    const provisioningId = env.provisioningId;
+    const ontModel = env.ontModel;
+    const uiUrl = env.uiUrl;
 
     if (!username || !password || !apiUrl || !apiToken) throw new Error('Missing environment variables');
 
-    console.log(`Cleanup: ${previousAccountId} | Create: ${accountId}`);
+    // Optionally cancel CANCEL_ACCOUNT_ID first, then create the next free account.
+    const previousAccountId = process.env.CANCEL_ACCOUNT_ID;
+    const { accountId, orderId } = await allocateTestAccount();
+
+    console.log(`Cleanup: ${previousAccountId ?? 'none'} | Create: ${accountId}`);
 
     // LOGIN
     await page.goto(`${uiUrl}/login`);
@@ -36,61 +33,65 @@ test('environment check', async ({ request, page }) => {
     await expect(page).toHaveURL(/\/dashboard\/me\/?$/);
 
     // TRY CANCEL PREVIOUS ACCOUNT
-    await page.getByRole('button', { name: 'Customer Hub' }).click();
-    await page.getByRole('link', { name: 'Customer Management' }).first().click();
+    if (previousAccountId) {
+        await page.getByRole('button', { name: 'Customer Hub' }).click();
+        await page.getByRole('link', { name: 'Customer Management' }).first().click();
 
-    const search = page.locator('.form-group').first().getByRole('textbox');
-    await search.fill(previousAccountId);
-    await page.getByRole('button', { name: 'Search', exact: true }).click();
+        const search = page.locator('.form-group').first().getByRole('textbox');
+        await search.fill(previousAccountId);
+        await page.getByRole('button', { name: 'Search', exact: true }).click();
 
-    const previousAccount = page.getByRole('link', {
-        name: previousAccountId,
-        exact: true,
-    });
+        const previousAccount = page.getByRole('link', {
+            name: previousAccountId,
+            exact: true,
+        });
 
-    const previousAccountExists = await previousAccount
-        .waitFor({ state: 'visible', timeout: 5000 })
-        .then(() => true)
-        .catch(() => false);
+        const previousAccountExists = await previousAccount
+            .waitFor({ state: 'visible', timeout: 5000 })
+            .then(() => true)
+            .catch(() => false);
 
-    if (previousAccountExists) {
-        console.log(`PASS: ${previousAccountId} found`);
+        if (previousAccountExists) {
+            console.log(`PASS: ${previousAccountId} found`);
 
-        await previousAccount.click();
+            await previousAccount.click();
 
-        await page.locator('a').filter({ hasText: 'Subscription Data' }).click();
-        await page.locator('a').filter({ hasText: 'Assets' }).click();
-        await page.getByRole('link', { name: ' Services' }).click();
+            await page.locator('a').filter({ hasText: 'Subscription Data' }).click();
+            await page.locator('a').filter({ hasText: 'Assets' }).click();
+            await page.getByRole('link', { name: ' Services' }).click();
 
-        const cancel = page.getByRole('link', { name: 'Cancel', exact: true });
+            const cancel = page.getByRole('link', { name: 'Cancel', exact: true });
 
-        if (await cancel.isVisible().catch(() => false)) {
-            await cancel.click();
-            await page.getByRole('button', { name: 'Create', exact: true }).click();
-            await page.getByRole('button', { name: 'Submit order' }).click();
+            if (await cancel.isVisible().catch(() => false)) {
+                await cancel.click();
+                await page.getByRole('button', { name: 'Create', exact: true }).click();
+                await page.getByRole('button', { name: 'Submit order' }).click();
 
-            await page.goto(`${uiUrl}/customers/${previousAccountId}/services`);
+                await page.goto(`${uiUrl}/customers/${previousAccountId}/services`);
 
-            for (let i = 1; i <= 10; i++) {
-                await page.waitForTimeout(5000);
-                await page.getByRole('button', { name: 'Refresh' }).click();
+                for (let i = 1; i <= 10; i++) {
+                    await page.waitForTimeout(5000);
+                    await page.getByRole('button', { name: 'Refresh' }).click();
 
-                if (
-                    await page
-                        .getByRole('cell', { name: 'CLOSED', exact: true })
-                        .first()
-                        .isVisible()
-                        .catch(() => false)
-                ) {
-                    console.log(`PASS: ${previousAccountId} cancelled`);
-                    break;
+                    if (
+                        await page
+                            .getByRole('cell', { name: 'CLOSED', exact: true })
+                            .first()
+                            .isVisible()
+                            .catch(() => false)
+                    ) {
+                        console.log(`PASS: ${previousAccountId} cancelled`);
+                        break;
+                    }
                 }
+            } else {
+                console.log(`SKIP: ${previousAccountId} has nothing to cancel`);
             }
         } else {
-            console.log(`SKIP: ${previousAccountId} has nothing to cancel`);
+            console.log(`SKIP: ${previousAccountId} does not exist`);
         }
     } else {
-        console.log(`SKIP: ${previousAccountId} does not exist`);
+        console.log('SKIP: CANCEL_ACCOUNT_ID not set, nothing to cancel');
     }
 
     // FREE PROVISIONING ID

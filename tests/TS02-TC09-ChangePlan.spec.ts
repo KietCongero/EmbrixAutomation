@@ -1,19 +1,19 @@
 import { test, expect } from '@playwright/test';
-import { execSync } from 'node:child_process';
 import { queryDatabase } from '../helpers/database';
-import { ACCOUNT_ID } from '../test-data/testIds';
+import { runSpec, startSuite } from '../helpers/suite';
+import { env } from '../config/environments';
 
 test('TC09 - collections, payments, billing and plan change', async ({ page, request }) => {
     test.setTimeout(60 * 60 * 1000);
 
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
-    const apiToken = process.env.EMBRIX_API_TOKEN;
-    const accountId = ACCOUNT_ID;
+    const username = env.username;
+    const password = env.password;
+    const apiToken = env.apiToken;
+    const accountId = await startSuite('TS02');
 
-    const dailyJobUrl = 'https://core-ui.demo.embrix.org/jobs-management/job-schedule/CJ-12';
-    const paymentUrl = 'https://crm-gateway.coopegsbx.embrix.org/applyPayment';
-    const modifyUrl = 'https://crm-gateway.coopegsbx.embrix.org/processAccountAndOrder';
+    const dailyJobUrl = '/jobs-management/job-schedule/CJ-12';
+    const paymentUrl = env.api.applyPayment;
+    const modifyUrl = env.api.processAccountAndOrder;
 
     const modifyOrderA = `MOD${accountId}A`;
     const modifyOrderB = `MOD${accountId}B`;
@@ -33,7 +33,7 @@ test('TC09 - collections, payments, billing and plan change', async ({ page, req
     };
 
     const openAccount = async () => {
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'Customer Hub' }).click();
         await page.getByRole('link', { name: 'Customer Management' }).first().click();
 
@@ -58,7 +58,7 @@ test('TC09 - collections, payments, billing and plan change', async ({ page, req
     const setCcpTime = async (targetDate: string) => {
         console.log(`Changing CCP time to ${targetDate}...`);
 
-        await page.goto('https://transactional.coopeg.embrix.org/graphiql?');
+        await page.goto(env.graphiqlUrl);
 
         const mutation = `mutation {
   setCcpTime(input: {
@@ -127,7 +127,7 @@ test('TC09 - collections, payments, billing and plan change', async ({ page, req
     };
 
     const runBillingDailyJob = async (targetDate: string) => {
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'Operations Hub' }).click();
         await page.getByRole('link', { name: 'Jobs Management' }).click();
         await page.locator('#sidebarnav a').filter({ hasText: 'Jobs Management' }).click();
@@ -410,7 +410,7 @@ test('TC09 - collections, payments, billing and plan change', async ({ page, req
         for (let attempt = 1; attempt <= 10; attempt++) {
             console.log(`Collection search ${attempt}/10`);
 
-            await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+            await page.goto('/dashboard/me');
             await page.getByRole('button', { name: 'AR Hub' }).click();
             await page.getByRole('link', { name: 'Collections' }).click();
 
@@ -710,7 +710,7 @@ test('TC09 - collections, payments, billing and plan change', async ({ page, req
     // ============================================================
 
     await test.step('Create account and provision', async () => {
-        execSync('npx playwright test tests/test-1.spec.ts --headed', { stdio: 'inherit', env: process.env });
+        runSpec('tests/test-1.spec.ts', { headed: true });
         console.log('PASS: TEST 1 COMPLETED');
     });
 
@@ -721,7 +721,7 @@ test('TC09 - collections, payments, billing and plan change', async ({ page, req
      * This is the only login TC09 needs.
      */
 
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();

@@ -3,8 +3,9 @@ import { test, expect } from '@playwright/test';
 
 import { randomBytes } from 'node:crypto';
 import accountTemplate from '../test-data/tc14-account.json';
-import { ACCOUNT_ID, ORDER_ID } from '../test-data/testIds';
+import { allocateTestAccount } from '../helpers/accounts';
 import { queryDatabase } from '../helpers/database';
+import { env } from '../config/environments';
 
 test('TC14 - create intercompany account, validate account information, and provision service', async ({ request, page }) => {
   test.setTimeout(20 * 60 * 1000);
@@ -13,16 +14,15 @@ test('TC14 - create intercompany account, validate account information, and prov
   // CONFIG
   // ============================================================
 
-  const apiUrl = process.env.EMBRIX_API_URL;
-  const apiToken = process.env.EMBRIX_API_TOKEN;
-  const username = process.env.EMBRIX_USERNAME;
-  const password = process.env.EMBRIX_PASSWORD;
+  const apiUrl = env.api.processAccountAndOrder;
+  const apiToken = env.apiToken;
+  const username = env.username;
+  const password = env.password;
 
-  const accountId = ACCOUNT_ID;
-  const orderId = ORDER_ID;
+  const { accountId, orderId } = await allocateTestAccount();
 
-  const provisioningId = 'ALCLB3A97FBA';
-  const ontModel = 'G-240W-G';
+  const provisioningId = env.provisioningId;
+  const ontModel = env.ontModel;
 
   if (!apiUrl || !apiToken) throw new Error('Missing EMBRIX_API_URL or EMBRIX_API_TOKEN');
   if (!username || !password) throw new Error('Missing EMBRIX_USERNAME or EMBRIX_PASSWORD');
@@ -162,7 +162,7 @@ test('TC14 - create intercompany account, validate account information, and prov
 
   console.log('Logging into Embrix...');
 
-  await page.goto('https://core-ui.demo.embrix.org/login');
+  await page.goto('/login');
 
   await page.getByRole('textbox', { name: 'Username' }).fill(username);
   await page.getByRole('textbox', { name: 'Password' }).fill(password);
@@ -198,7 +198,7 @@ test('TC14 - create intercompany account, validate account information, and prov
 
   console.log('Checking Account Type...');
 
-  await page.goto(`https://core-ui.demo.embrix.org/customers/${accountId}/info`);
+  await page.goto(`/customers/${accountId}/info`);
 
   const accountType = page.locator('div').filter({ hasText: /^INTERCOMPANY$/ }).nth(2);
 

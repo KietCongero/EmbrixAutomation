@@ -1,18 +1,19 @@
 
 import { test, expect } from '@playwright/test';
 import { ACCOUNT_ID } from '../test-data/testIds';
+import { env } from '../config/environments';
 
 test('TC16 - GraphQL billing and generate invoice', async ({ page }) => {
     test.setTimeout(5 * 60 * 1000);
 
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
+    const username = env.username;
+    const password = env.password;
     const accountId = ACCOUNT_ID;
 
     if (!username || !password) throw new Error('Missing credentials');
 
     // LOGIN
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();
@@ -20,7 +21,7 @@ test('TC16 - GraphQL billing and generate invoice', async ({ page }) => {
 
     // OPEN BILLS
     const openBills = async () => {
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'Customer Hub' }).click();
         await page.getByRole('link', { name: 'Customer Management' }).first().click();
         await page.locator('.form-group').first().getByRole('textbox').fill(accountId);
@@ -56,7 +57,7 @@ test('TC16 - GraphQL billing and generate invoice', async ({ page }) => {
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             console.log(`GraphQL attempt ${attempt}/${maxAttempts}: ${expectedText}`);
 
-            await page.goto('https://transactional.coopeg.embrix.org/graphiql?');
+            await page.goto(env.graphiqlUrl);
 
             await page.evaluate((query) => {
                 const editorElement = document.querySelector('.CodeMirror');

@@ -1,17 +1,23 @@
 import { test, expect } from '@playwright/test';
-import { ACCOUNT_ID } from '../test-data/testIds';
+import { env } from '../config/environments';
 
 test('cancel active subscription', async ({ page }) => {
     test.setTimeout(3 * 60 * 1000);
 
-    const username = process.env.EMBRIX_USERNAME;
-    const password = process.env.EMBRIX_PASSWORD;
-    const accountId = String(Number(ACCOUNT_ID) - 1);
+    const username = env.username;
+    const password = env.password;
 
     if (!username || !password) throw new Error('Missing username or password');
 
+    // The account to cancel - look up which account holds the ONT in the DB first (see README).
+    const accountId = process.env.CANCEL_ACCOUNT_ID;
+
+    if (!accountId) throw new Error('Set CANCEL_ACCOUNT_ID to the account whose subscription should be cancelled');
+
+    console.log(`Cancelling subscription on ${accountId}`);
+
     const openCustomerServices = async () => {
-        await page.goto('https://core-ui.demo.embrix.org/dashboard/me');
+        await page.goto('/dashboard/me');
         await page.getByRole('button', { name: 'Customer Hub' }).click();
         await page.getByRole('link', { name: 'Customer Management' }).first().click();
 
@@ -61,7 +67,7 @@ test('cancel active subscription', async ({ page }) => {
         throw new Error(`${label}: Submit order button was not available`);
     };
 
-    await page.goto('https://core-ui.demo.embrix.org/login');
+    await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
     await page.getByRole('button', { name: 'Login' }).click();

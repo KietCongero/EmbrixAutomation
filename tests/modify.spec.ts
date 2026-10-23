@@ -1,12 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { ACCOUNT_ID } from '../test-data/testIds';
+import { env } from '../config/environments';
 
 test('TC09 - modify IPTV package and TV ADIC', async ({ request }) => {
     test.setTimeout(5 * 60 * 1000);
 
-    const apiToken = process.env.EMBRIX_API_TOKEN;
+    const apiToken = env.apiToken;
 
-    const apiUrl = 'https://crm-gateway.coopegsbx.embrix.org/processAccountAndOrder';
+    const apiUrl = env.api.processAccountAndOrder;
 
     const accountId = ACCOUNT_ID;
 

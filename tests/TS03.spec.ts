@@ -1,45 +1,29 @@
 import { test, expect } from '@playwright/test';
-import { execSync } from 'node:child_process';
+import { runSpec, startSuite, wait } from '../helpers/suite';
 
 test('TS03 - Payment Extension and Arrangement full flow', async () => {
     test.setTimeout(2 * 60 * 60 * 1000);
 
-    const run = (file: string) => {
-        console.log('================================================');
-        console.log(`RUNNING: ${file}`);
-        console.log('================================================');
+    const accountId = await startSuite('TS03');
 
-        execSync(`npx playwright test "${file}" --project=chromium --headed --workers=1`, {
-            stdio: 'inherit',
-            env: process.env,
-        });
-
-        console.log(`PASS: ${file}`);
-    };
-
-    const wait = async (seconds: number) => {
-        console.log(`Waiting ${seconds} seconds before next test...`);
-        await new Promise(resolve => setTimeout(resolve, seconds * 1000));
-    };
-
-    run('tests/test-9.spec.ts');
+    runSpec('tests/test-9.spec.ts', { headed: true });
     await wait(10);
 
-    run('tests/TC05-RecurringBilling.spec.ts');
+    runSpec('tests/TC05-RecurringBilling.spec.ts', { headed: true });
     await wait(10);
 
-    run('tests/TC10-GracePeriod.spec.ts');
+    runSpec('tests/TC10-GracePeriod.spec.ts', { headed: true });
     await wait(10);
 
-    run('tests/TC10-B.spec.ts');
+    runSpec('tests/TC10-B.spec.ts', { headed: true });
     await wait(10);
 
-    run('test/TC08.spec.ts')
+    runSpec('tests/TC08.spec.ts', { headed: true });
 
     expect(true).toBe(true);
 
     console.log('================================================');
-    console.log('PASS: TS03 COMPLETE');
-    console.log('test-9 -> TC05 -> TC10 -> TC10-B');
+    console.log(`PASS: TS03 COMPLETE - ${accountId}`);
+    console.log('test-9 -> TC05 -> TC10 -> TC10-B -> TC08');
     console.log('================================================');
 });

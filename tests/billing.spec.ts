@@ -1,14 +1,15 @@
 import { test, expect } from '@playwright/test';
+import { env } from '../config/environments';
 
 test('billing flow', async ({ page }) => {
-  const username = process.env.EMBRIX_USERNAME;
-  const password = process.env.EMBRIX_PASSWORD;
+  const username = env.username;
+  const password = env.password;
 
   if (!username || !password) {
     throw new Error('Missing EMBRIX_USERNAME or EMBRIX_PASSWORD');
   }
 
-  await page.goto('https://core-ui.demo.embrix.org/login');
+  await page.goto('/login');
 
   await page
     .getByRole('textbox', { name: 'Username' })
