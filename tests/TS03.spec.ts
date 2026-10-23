@@ -16,14 +16,11 @@ test('TS03 - Payment Extension and Arrangement full flow', async () => {
     await wait(10);
 
     runSpec('tests/TC10-B.spec.ts', { headed: true });
-    await wait(10);
-
-    runSpec('tests/TC08.spec.ts', { headed: true });
 
     expect(true).toBe(true);
 
     console.log('================================================');
     console.log(`PASS: TS03 COMPLETE - ${accountId}`);
-    console.log('test-9 -> TC05 -> TC10 -> TC10-B -> TC08');
+    console.log('test-9 -> TC05 -> TC10 -> TC10-B');
     console.log('================================================');
 });

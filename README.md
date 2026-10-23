@@ -110,9 +110,9 @@ TEST_ENV=ns npx playwright test TS03
 
 | Suite | Command | Steps |
 | --- | --- | --- |
-| TS01 Residential Account | `npx playwright test TS01` | test-1 → TC07-A-Collection |
+| TS01 Residential Account | `npx playwright test TS01` | test-1 → TC07-A-Collection → TC08 (about 20 min) |
 | TS02 Change Plan | `npx playwright test TS02` | test-1 → TC09 billing / collection / payment / modify flow |
-| TS03 Payment Extension | `npx playwright test TS03` | test-9 → TC05 → TC10-GracePeriod → TC10-B → TC08 |
+| TS03 Payment Extension | `npx playwright test TS03` | test-9 → TC05 → TC10-GracePeriod → TC10-B |
 | TS05 Withdrawal Order | `npx playwright test TS05` | test-13 → TC07-A-Collection ×2 → TC13-A-Viewing |
 | TS08 PHC Account | `npx playwright test TS08` | test-16 → TC05 ×3 → TC16-Graph ×33 → TC05 (about 4 h) |
 
