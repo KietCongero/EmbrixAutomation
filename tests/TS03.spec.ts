@@ -9,7 +9,7 @@ test('TS03 - Payment Extension and Arrangement full flow', async () => {
         console.log(`RUNNING: ${file}`);
         console.log('================================================');
 
-        execSync(`npx playwright test "${file}" --project=chromium --workers=1`, {
+        execSync(`npx playwright test "${file}" --project=chromium --headed --workers=1`, {
             stdio: 'inherit',
             env: process.env,
         });
@@ -32,6 +32,9 @@ test('TS03 - Payment Extension and Arrangement full flow', async () => {
     await wait(10);
 
     run('tests/TC10-B.spec.ts');
+    await wait(10);
+
+    run('test/TC08.spec.ts')
 
     expect(true).toBe(true);
 

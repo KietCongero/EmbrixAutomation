@@ -823,15 +823,23 @@ test('TC08 - billing, collections, payments, suspension and reconnection', async
     if (shouldRun(15)) {
         await test.step('15 - Run rescheduled suspension job after grace period', async () => {
             if (!month05OriginalSuspensionDate) throw new Error('RUN_STEP=15 requires ORIGINAL_SUSPENSION_DATE when run alone');
-            const updatedAction = await getCollectionInfo(month05OriginalSuspensionDate);
+
+            const [year, month] = month05OriginalSuspensionDate.split('-').map(Number);
+            const expectedSuspensionDate = new Date(Date.UTC(year, month, 21)).toISOString().slice(0, 10);
+
+            console.log(`Original suspension date: ${month05OriginalSuspensionDate}`);
+            console.log(`Expected suspension after grace: ${expectedSuspensionDate}`);
+
+            const updatedAction = await getCollectionInfo(expectedSuspensionDate);
+
             expect(updatedAction.action).toBe('INACTIVATE_SUBSCRIPTION');
-            if (updatedAction.nextActionDate <= month05OriginalSuspensionDate) {
-                throw new Error(`Grace did not postpone suspension: original ${month05OriginalSuspensionDate}, current ${updatedAction.nextActionDate}`);
-            }
+            expect(updatedAction.nextActionDate).toBe(expectedSuspensionDate);
 
             await verifyServiceStatus('ACTIVE');
+
             await setCcpTime(updatedAction.nextActionDate);
             await runExistingDailyJob(updatedAction.nextActionDate);
+
             const suspendOrderId = await processOrder('SUSPEND');
 
             console.log('================================================');
