@@ -87,11 +87,13 @@ SELECT * FROM core_engine.service_unit
 WHERE provisioningid = 'ALCLB3A97FBA';
 ```
 
-If an active row exists, first confirm that the account has no pending order, since cancellation fails while one is pending. Then cancel that account's subscription:
+If an active row exists, cancel that account's subscription:
 
 ```bash
 CANCEL_ACCOUNT_ID=9000249 npx playwright test tests/cancel.spec.ts
 ```
+
+The cancel spec opens the account's Services page and cancels each order under **In-complete Orders** first (select the order → **Cancel Order**), because a pending order blocks the cancellation. It then creates and submits the cancel order and waits for the subscription to reach `CLOSED`.
 
 Re-run the queries and confirm the ONT is free before starting the suite. Only cancel accounts created for testing.
 

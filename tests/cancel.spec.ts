@@ -67,6 +67,44 @@ test('cancel active subscription', async ({ page }) => {
         throw new Error(`${label}: Submit order button was not available`);
     };
 
+    // A pending order blocks the cancellation, so cancel every In-complete Order first.
+    const cancelIncompleteOrders = async () => {
+        const heading = page.getByRole('heading', { name: 'In-complete Orders' });
+        // Only rows below the heading, so the Services table above it is never touched.
+        const orderRow = heading.locator('xpath=following::tr[td[contains(., "ORD")]]').first();
+        const cancelOrderButton = page.getByRole('button', { name: 'Cancel Order' });
+
+        await expect(heading).toBeVisible();
+
+        for (let attempt = 1; attempt <= 5; attempt++) {
+            if (!(await orderRow.isVisible().catch(() => false))) {
+                // The panel may be collapsed
+                await heading.click();
+                await page.waitForTimeout(1000);
+            }
+
+            if (!(await orderRow.isVisible().catch(() => false))) {
+                console.log('PASS: No in-complete orders');
+                return;
+            }
+
+            const orderId = (await orderRow.innerText()).match(/ORD[A-Za-z0-9-]+/)?.[0] ?? 'unknown';
+
+            console.log(`Cancelling in-complete order ${orderId}...`);
+
+            await orderRow.getByRole('cell').filter({ hasText: /^\d{4}-\d{2}-\d{2}$/ }).first().click();
+            await expect(cancelOrderButton, `Cancel Order not available for ${orderId}`).toBeVisible({ timeout: 10000 });
+            await cancelOrderButton.click();
+            await page.waitForTimeout(3000);
+
+            console.log(`PASS: In-complete order ${orderId} cancelled`);
+
+            await openCustomerServices();
+        }
+
+        throw new Error(`In-complete orders still present on ${accountId} after 5 cancellations`);
+    };
+
     await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
@@ -76,6 +114,7 @@ test('cancel active subscription', async ({ page }) => {
     console.log('PASS: Login successful');
 
     await openCustomerServices();
+    await cancelIncompleteOrders();
 
     console.log('Opening cancellation...');
 
