@@ -213,11 +213,11 @@ test('cancel active subscription', async ({ page }) => {
 
     const effectiveDate = await getSubscriptionEffectiveDate();
 
-    if (await ensureCcpAtOrAfter(effectiveDate)) {
-        // GraphiQL navigated away from the form, so open it again
-        await openCustomerServices();
-        await openCancelForm();
-    }
+    await ensureCcpAtOrAfter(effectiveDate);
+
+    // Reading (and setting) the CCP time navigates to GraphiQL, so always reopen the form
+    await openCustomerServices();
+    await openCancelForm();
 
     await page.getByRole('button', { name: 'Create', exact: true }).click();
 

@@ -277,6 +277,34 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
         await waitAfterJobRun();
     };
 
+    // Once a collection starts, Embrix schedules the job for each next action date itself - that job
+    // carries the collection action, so run it rather than a manually created one.
+    const runEmbrixDailyJob = async (targetDate: string) => {
+        await setCcpTime(targetDate);
+
+        const jobs = await getJobsForDate(targetDate);
+
+        if (jobs.length === 0) throw new Error(`Embrix did not schedule a DAILY job for ${targetDate}`);
+
+        await runExistingDailyJob(targetDate);
+    };
+
+    // Demo only: jobs left by earlier runs on the same future dates make Process / Create Job Schedule
+    // hang behind the loader. Clear them before the collection flow so Embrix schedules fresh ones.
+    const cleanJobsFrom = async (fromDate: string) => {
+        console.log(`Cleaning jobs scheduled on or after ${fromDate}...`);
+
+        const jobs = await queryDatabase(`SELECT id, scheduledate FROM core_engine.job_schedule WHERE scheduledate >= $1`, [fromDate]);
+
+        for (const job of jobs) {
+            await queryDatabase(`DELETE FROM core_engine.job_schedule_list WHERE id = $1`, [job.id]);
+            await queryDatabase(`DELETE FROM core_engine.job_schedule WHERE id = $1`, [job.id]);
+            console.log(`PASS: Deleted job ${job.id}`);
+        }
+
+        console.log(`PASS: ${jobs.length} leftover job(s) cleared from ${fromDate}`);
+    };
+
     const runBillingDailyJob = async (targetDate: string) => {
         await page.goto(dailyJobUrl);
         await fillJobDate(targetDate);
@@ -544,6 +572,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     console.log(`STEP 8 - ORIGINAL DUE DATE ${originalDueDate}`);
     console.log('================================================');
 
+    await cleanJobsFrom(originalDueDate);
     await setCcpTime(originalDueDate);
     await createAndRunDailyJob(originalDueDate);
 
@@ -581,8 +610,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     console.log(`STEP 10 - REMINDER EMAIL ${firstReminder.nextActionDate}`);
     console.log('================================================');
 
-    await setCcpTime(firstReminder.nextActionDate);
-    await runExistingDailyJob(firstReminder.nextActionDate);
+    await runEmbrixDailyJob(firstReminder.nextActionDate);
 
     console.log(`PASS: Reminder email job processed on ${firstReminder.nextActionDate}`);
 
@@ -632,8 +660,7 @@ test('TC10 - due date extension, collection, reminder and suspension', async ({ 
     console.log(`Jobs found for suspension date ${suspensionDate}: ${suspensionJobs.length}`);
     console.log(suspensionJobs);
 
-    await setCcpTime(suspensionDate);
-    await runExistingDailyJob(suspensionDate);
+    await runEmbrixDailyJob(suspensionDate);
 
     console.log(`PASS: Suspension job processed on ${suspensionDate}`);
 
