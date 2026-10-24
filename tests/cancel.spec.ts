@@ -105,6 +105,97 @@ test('cancel active subscription', async ({ page }) => {
         throw new Error(`In-complete orders still present on ${accountId} after 5 cancellations`);
     };
 
+    // ============================================================
+    // CCP TIME
+    // ============================================================
+
+    const runGraphql = async (query: string) => {
+        await page.goto(env.graphiqlUrl);
+
+        await page.evaluate((q) => {
+            const codeMirror = (document.querySelector('.CodeMirror') as any)?.CodeMirror;
+
+            if (!codeMirror) throw new Error('CodeMirror editor not found');
+
+            codeMirror.setValue(q);
+        }, query);
+
+        await page.waitForTimeout(1000);
+        await page.getByRole('button', { name: 'Execute Query (Ctrl-Enter)' }).click();
+
+        // Every CodeMirror after the query editor (variables, result); read their full text once a response arrives.
+        const readResult = () =>
+            page.evaluate(() =>
+                [...document.querySelectorAll('.CodeMirror')]
+                    .slice(1)
+                    .map(editor => (editor as any).CodeMirror?.getValue() ?? '')
+                    .join('\n')
+            );
+
+        await expect.poll(readResult, { timeout: 15000 }).toContain('"data"');
+
+        return readResult();
+    };
+
+    const getCcpTime = async () => {
+        const result = await runGraphql('{ getCcpDateTime(dummy: "") { ccpTime } }');
+        const ccpTime = result.match(/"ccpTime": "(\d{4}-\d{2}-\d{2})/)?.[1];
+
+        if (!ccpTime) throw new Error(`Could not read CCP time: ${result}`);
+
+        return ccpTime;
+    };
+
+    const setCcpTime = async (targetDate: string) => {
+        await runGraphql(`mutation {
+  setCcpTime(input: {
+    ccpTime: "${targetDate}"
+  }) {
+    ccpTime
+  }
+}`);
+
+        await expect(page.locator('pre').filter({ hasText: `"ccpTime": "${targetDate}"` })).toBeVisible();
+    };
+
+    // The cancel is rejected ("Account is not effective until a future Effective date") while the
+    // CCP time is before the subscription's effective date, so move CCP forward first - never back.
+    const ensureCcpAtOrAfter = async (effectiveDate: string) => {
+        const ccpTime = await getCcpTime();
+
+        console.log(`CCP time ${ccpTime} | Subscription effective ${effectiveDate}`);
+
+        if (ccpTime >= effectiveDate) {
+            console.log('PASS: CCP time already on or after effective date');
+            return false;
+        }
+
+        console.log(`Moving CCP time forward to ${effectiveDate}...`);
+        await setCcpTime(effectiveDate);
+        console.log(`PASS: CCP time changed to ${effectiveDate}`);
+
+        return true;
+    };
+
+    const openCancelForm = async () => {
+        await page.getByRole('link', { name: 'Cancel', exact: true }).click();
+        await expect(page.getByRole('columnheader', { name: 'Effective Date' })).toBeVisible();
+    };
+
+    const getSubscriptionEffectiveDate = async () => {
+        const subscriptionRow = page
+            .getByRole('heading', { name: 'Subscription', exact: true })
+            .locator('xpath=following::tr[td][1]');
+
+        await expect(subscriptionRow).toBeVisible();
+
+        const effectiveDate = (await subscriptionRow.innerText()).match(/\d{4}-\d{2}-\d{2}/)?.[0];
+
+        if (!effectiveDate) throw new Error(`Could not find subscription effective date: ${await subscriptionRow.innerText()}`);
+
+        return effectiveDate;
+    };
+
     await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill(username);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
@@ -118,8 +209,23 @@ test('cancel active subscription', async ({ page }) => {
 
     console.log('Opening cancellation...');
 
-    await page.getByRole('link', { name: 'Cancel', exact: true }).click();
+    await openCancelForm();
+
+    const effectiveDate = await getSubscriptionEffectiveDate();
+
+    if (await ensureCcpAtOrAfter(effectiveDate)) {
+        // GraphiQL navigated away from the form, so open it again
+        await openCustomerServices();
+        await openCancelForm();
+    }
+
     await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+    const notEffective = page.getByText('Account is not effective until a future Effective date');
+
+    if (await notEffective.waitFor({ timeout: 3000 }).then(() => true).catch(() => false)) {
+        throw new Error(`Cancel rejected: account not effective yet (subscription effective ${effectiveDate})`);
+    }
 
     console.log('PASS: Cancel order created');
 

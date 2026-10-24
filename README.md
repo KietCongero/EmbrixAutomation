@@ -93,7 +93,13 @@ If an active row exists, cancel that account's subscription:
 CANCEL_ACCOUNT_ID=9000249 npx playwright test tests/cancel.spec.ts
 ```
 
-The cancel spec opens the account's Services page and cancels each order under **In-complete Orders** first (select the order → **Cancel Order**), because a pending order blocks the cancellation. It then creates and submits the cancel order and waits for the subscription to reach `CLOSED`.
+The cancel spec:
+
+1. Opens the account's Services page and cancels each order under **In-complete Orders** (select the order → **Cancel Order**). A pending order blocks the cancellation.
+2. Opens the cancel form and reads the subscription's **Effective Date**. It compares that date with the current CCP time (`getCcpDateTime` in GraphiQL). If the CCP time is earlier, the cancel would be rejected with "Account is not effective until a future Effective date". So the spec first moves the CCP time **forward** to the effective date. It never moves the CCP time back.
+3. Creates and submits the cancel order and waits for the subscription to reach `CLOSED`.
+
+Because of step 2, the CCP time may be later after a cancel than it was before. Keep that in mind if someone else is testing on the same environment.
 
 Re-run the queries and confirm the ONT is free before starting the suite. Only cancel accounts created for testing.
 
