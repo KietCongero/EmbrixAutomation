@@ -121,6 +121,7 @@ TEST_ENV=ns npx playwright test TS03
 | TS03 Payment Extension | `npx playwright test TS03` | test-9 → TC05 → TC10-GracePeriod → TC10-B |
 | TS05 Withdrawal Order | `npx playwright test TS05` | test-13 → TC07-A-Collection ×2 → TC13-A-Viewing |
 | TS08 PHC Account | `npx playwright test TS08` | test-16 → TC05 ×3 → TC16-Graph ×33 → TC05 (about 4 h) |
+| TS790115 Tier A (790115 cases) | `npx playwright test TS790115` | test-790115 (TC-01) → TC790115-05 → TC790115-06-08 → TC790115-09 → TC790115-10 → TC790115-15 (about 1 h) |
 
 Each suite prints the environment it uses (UI, API, DB) and the account it allocated. It then runs each step in its own Playwright process against that same account. If a step fails, the suite stops there.
 
@@ -161,6 +162,19 @@ These test cases don't fully match the expected results in the regression case y
 | TC-12 (debit note) | `test-11.spec.ts` (TC-11 with a slight variant) | Doesn't match the regression case; needs checking |
 | TC-15 (tax exemption) | `test-15.spec.ts` | May be fixed; needs retesting |
 | TC-16 (PHC account) | `TS08.spec.ts`, `test-16.spec.ts`, `TC16-Graph.spec.ts` | Doesn't match the regression case; needs checking |
+
+## 790115 test cases
+
+Rules: `INSTRUCTIONS-790115.md`. Plan and status: `TEST-PLAN-790115.md`. Each spec copies the closest old spec; the sheet's expected dates and amounts (due day 18, suspension on the 21st, notice the day after) are written next to the values read from the UI in the log, not asserted.
+
+| Sheet case | Spec | Copied from |
+| --- | --- | --- |
+| TC-01 | `tests/test-790115.spec.ts` | `test-11` |
+| TC-05 | `tests/TC790115-05-Billing.spec.ts` | `TC05-RecurringBilling` |
+| TC-06, TC-07, TC-08 | `tests/TC790115-06-08-Collection.spec.ts` | `TC07-A-Collection` |
+| TC-09 (also TC-18, TC-19) | `tests/TC790115-09-BillingSuspended.spec.ts` | `TC08` step 2, `TC08-A` step 8 |
+| TC-10 (also TC-20) | `tests/TC790115-10-PayResume.spec.ts` | `TC08` step 4, paying every open invoice in one request (R03) |
+| TC-15 | `tests/TC790115-15-Charges.spec.ts` | none (Q18 report, no browser) |
 
 ## Shared helpers (`helpers/`)
 

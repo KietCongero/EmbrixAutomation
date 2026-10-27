@@ -35,7 +35,8 @@ export const openServices = async (page: Page, accountId: string) => {
     await openAccount(page, accountId);
     await page.locator('a').filter({ hasText: 'Subscription Data' }).click();
     await page.locator('a').filter({ hasText: 'Assets' }).click();
-    await page.getByRole('link', { name: ' Services' }).click();
+    // By href: the name also matches "Billable Services"
+    await page.locator(`a[href="/customers/${accountId}/services"]`).click();
 };
 
 export const openBills = async (page: Page, accountId: string) => {

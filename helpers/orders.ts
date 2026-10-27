@@ -8,7 +8,7 @@ import { openServices, verifyServiceStatus } from './ui';
 
 export type OrderType = 'SUSPEND' | 'RESUME';
 
-export const getIncompleteOrder = async (page: Page, accountId: string, orderType: OrderType, attempts = 10) => {
+export const getIncompleteOrders = async (page: Page, accountId: string, orderType: OrderType, attempts = 10) => {
     await openServices(page, accountId);
 
     console.log(`Looking for incomplete ${orderType} order...`);
@@ -16,16 +16,17 @@ export const getIncompleteOrder = async (page: Page, accountId: string, orderTyp
     await expect(page.getByRole('heading', { name: 'In-complete Orders' })).toBeVisible();
 
     for (let attempt = 1; attempt <= attempts; attempt++) {
-        const orderRow = page.getByRole('row').filter({ hasText: orderType }).filter({ hasText: 'ORD-' }).last();
+        const rows = page.getByRole('row').filter({ hasText: orderType }).filter({ hasText: 'ORD-' });
+        const orderIds: string[] = [];
 
-        if (await orderRow.isVisible().catch(() => false)) {
-            const rowText = await orderRow.innerText();
-            const orderMatch = rowText.match(/ORD-[A-Za-z0-9-]+/);
+        for (let i = 0; i < await rows.count(); i++) {
+            const match = (await rows.nth(i).innerText()).match(/ORD-[A-Za-z0-9-]+/);
+            if (match) orderIds.push(match[0]);
+        }
 
-            if (!orderMatch) throw new Error(`Could not find ${orderType} order ID: ${rowText}`);
-
-            console.log(`PASS: ${orderType} order found: ${orderMatch[0]}`);
-            return orderMatch[0];
+        if (orderIds.length > 0) {
+            console.log(`PASS: ${orderType} order(s) found: ${orderIds.join(', ')}`);
+            return orderIds;
         }
 
         await page.waitForTimeout(5000);
@@ -34,6 +35,9 @@ export const getIncompleteOrder = async (page: Page, accountId: string, orderTyp
 
     throw new Error(`Could not find incomplete ${orderType} order for account ${accountId}`);
 };
+
+export const getIncompleteOrder = async (page: Page, accountId: string, orderType: OrderType, attempts = 10) =>
+    (await getIncompleteOrders(page, accountId, orderType, attempts)).slice(-1)[0];
 
 export const completeOrderProvisioning = async (orderId: string) => {
     console.log(`Completing provisioning sequence for ${orderId} in the DB...`);
@@ -52,18 +56,21 @@ export const completeOrderProvisioning = async (orderId: string) => {
 };
 
 // Find the Embrix-created SUSPEND/RESUME order, complete it, submit it, verify the service status.
+// "Submit order" acts on the first incomplete order, so when a failed earlier run left more than
+// one order of that type, every one of them is completed before submitting.
 export const processOrder = async (page: Page, accountId: string, orderType: OrderType) => {
-    const orderId = await getIncompleteOrder(page, accountId, orderType);
+    const orderIds = await getIncompleteOrders(page, accountId, orderType);
 
-    await completeOrderProvisioning(orderId);
+    for (const orderId of orderIds) await completeOrderProvisioning(orderId);
+
     await page.waitForTimeout(3000);
     await expect(page.getByRole('button', { name: 'Submit order' })).toBeVisible();
     await page.getByRole('button', { name: 'Submit order' }).click();
     await verifyServiceStatus(page, accountId, orderType === 'SUSPEND' ? 'SUSPENDED' : 'ACTIVE');
 
-    console.log(`PASS: ${orderType} order ${orderId} completed`);
+    console.log(`PASS: ${orderType} order ${orderIds.join(', ')} completed`);
 
-    return orderId;
+    return orderIds[orderIds.length - 1];
 };
 
 // Manual suspension / reconnection from the Services page (Suspend / Resume link > Create).

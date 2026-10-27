@@ -6,10 +6,9 @@ import { getOutstandingInvoices, readInvoices, InvoiceInfo } from './billing';
 
 export type Allocation = { invoiceId: string; amount: number };
 
-export const payInvoices = async (request: APIRequestContext, accountId: string, allocations: Allocation[], paymentSourceId = '') => {
-    if (!env.apiToken) throw new Error('Missing EMBRIX_API_TOKEN');
-    if (allocations.length === 0) throw new Error('No invoices to pay');
+type PaymentDetail = { invoiceId: string; status: string; id?: string; statusCode?: string; errorMsg?: string };
 
+const postPayment = async (request: APIRequestContext, accountId: string, allocations: Allocation[], paymentSourceId: string): Promise<PaymentDetail[]> => {
     const data = {
         id: '',
         paymentSourceId,
@@ -33,12 +32,37 @@ export const payInvoices = async (request: APIRequestContext, accountId: string,
 
     const body = JSON.parse(text);
 
-    expect(body.status).toBe('SUCCESS');
-    expect(body.statusCode).toBe('0');
+    // One allocation answers { status, statusCode, id }; several answer { paymentDetails: [ ... ] } in request order.
+    const details: Omit<PaymentDetail, 'invoiceId'>[] = Array.isArray(body.paymentDetails) ? body.paymentDetails : [body];
 
-    console.log(`PASS: Payment accepted for ${allocations.map(a => `${a.invoiceId} (${a.amount})`).join(', ')}`);
+    return allocations.map((allocation, index) => ({ invoiceId: allocation.invoiceId, ...(details[index] ?? { status: 'MISSING' }) }));
+};
 
-    return body;
+// Fails when any allocation is not SUCCESS. A FAILED allocation (seen: Postgres deadlock inside
+// Embrix when three invoices were paid in one request) is retried once on its own.
+export const payInvoices = async (request: APIRequestContext, accountId: string, allocations: Allocation[], paymentSourceId = '') => {
+    if (!env.apiToken) throw new Error('Missing EMBRIX_API_TOKEN');
+    if (allocations.length === 0) throw new Error('No invoices to pay');
+
+    let results = await postPayment(request, accountId, allocations, paymentSourceId);
+    const failed = results.filter(result => result.status !== 'SUCCESS');
+
+    if (failed.length > 0) {
+        console.log(`WARNING: ${failed.length} allocation(s) did not succeed: ${failed.map(f => `${f.invoiceId} ${f.status} ${f.errorMsg?.split('\n')[0] ?? ''}`).join(' | ')}. Retrying once...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        const retried = await postPayment(request, accountId, allocations.filter(a => failed.some(f => f.invoiceId === a.invoiceId)), paymentSourceId);
+
+        results = results.map(result => retried.find(r => r.invoiceId === result.invoiceId) ?? result);
+    }
+
+    for (const result of results) {
+        expect(result.status, `Payment for invoice ${result.invoiceId} did not succeed: ${result.errorMsg ?? result.status}`).toBe('SUCCESS');
+    }
+
+    console.log(`PASS: Payment accepted for ${results.map(r => `${r.invoiceId} (${r.id})`).join(', ')}`);
+
+    return results;
 };
 
 // Polls the Bills table until the invoice matches (e.g. CLOSED with due 0, or ACTIVE with due 2).

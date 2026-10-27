@@ -1,0 +1,57 @@
+{
+    "userId": "KCONG",
+    "firstName": "Kiet",
+    "lastName": "Cong",
+    "organization": "",
+    "commercialName": "",
+    "accountId": "256367_1",
+    "orderId": "813563_1",
+    "email": "saray.mora@congerotechnology.com",
+    "country": "Costa Rica",
+    "landmark": "",
+    "state": "GUANACASTE",
+    "extraLine": "",
+    "postalCode": "50101",
+    "city": "LIBERIA",
+    "phone": "60161554",
+    "street": "Pruebaa",
+    "district": "LIBERIA",
+    "orderType": "NEW",
+    "collectionProfile": "Normal",
+    "billingOnlyFlag": "true",
+    "partyId": "109225",
+    "groupId": "",
+    "accounttype": "RESIDENTIAL",
+    "customAccountType": "",
+    "identity": "503830816",
+    "identityDocument": "CÉDULA DE IDENTIDAD",
+    "staticIpRented": "false",
+    "paymentProfiles": [
+        {
+            "paymentMethod": "CHECK"
+        }
+    ],
+    "services": [
+        {
+            "bundleId": "BDL_INT_NA_100MBPS_TVE",
+            "packageId": "PKG_INT_NA_TV_VOIP_100MBPS",
+            "serviceType": "INTERNET",
+            "action": "ADD",
+            "quantity": "1"
+        },
+        {
+            "bundleId": "TV_ESTANDAR",
+            "packageId": "PKG_INT_NA_TV_VOIP_100MBPS",
+            "serviceType": "IPTV",
+            "action": "ADD",
+            "quantity": "1"
+        },
+        {
+            "bundleId": "BDL_VOIP",
+            "packageId": "PKG_INT_NA_TV_VOIP_100MBPS",
+            "serviceType": "VOIP",
+            "action": "ADD",
+            "quantity": "1"
+        }
+    ]
+}

@@ -1,5 +1,7 @@
 # Game plan: coding the 790115 test cases (TC-01 to TC-25)
 
+> **Rules first:** `INSTRUCTIONS-790115.md` wins over anything here. Each spec copies the closest old spec step for step, adds no Q-asserts, DB checks or logging unless asked, never checks the ONT or cancels anything, and is run headed on demo before hand-over. The "What's missing" columns below list *possible* checks from the sheet, not work to do without asking.
+
 Rough plan only. Source: `Test_cases_790115_EN.xlsx` (new) vs. the current specs, which were written for
 `REGRESSION SUITE ENGLISH` (old). Ordered from "almost done" to "new work / blocked".
 
@@ -18,7 +20,7 @@ Rough plan only. Source: `Test_cases_790115_EN.xlsx` (new) vs. the current specs
 
 ## Prep (do once, before any TC)
 
-1. **Pull the copy-pasted helpers into `helpers/`.** _(done: see README › Shared helpers)_ Every spec re-declares `login`, `openAccount`, `setCcpTime`,
+1. **Pull the copy-pasted helpers into `helpers/`.** Note: `openServices` selects the Services link by `href`; old specs use an icon glyph in the link name that must be copied byte for byte if reused. _(done: see README › Shared helpers)_ Every spec re-declares `login`, `openAccount`, `setCcpTime`,
    `cleanJobs`, `fillJobDate`, `createAndRunDailyJob`, `runExistingDailyJob`, `getNextPendingBill`,
    `runBillingDailyJob`, `getCollectionInfo`, `payBill`, `processOrder`. The best copies to lift:
    - CCP time get/set: `cancel.spec.ts` (`runGraphql`, `getCcpTime`, `setCcpTime`)
@@ -41,22 +43,22 @@ Legend: **Have** = rough share of the test that is already written somewhere. **
 
 | # | TC | What it checks | Existing code to reuse | What's missing | Have | Size |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | TC-05 | Invoices due on the 18th | `TC05-RecurringBilling.spec.ts` (whole billing cycle); `getGeneratedBillDueDate` in `TC07-A-Collection.spec.ts` | `expect(dueDate.endsWith('-18'))` after each run; Q07 | 95% | S |
-| 2 | TC-06 | Collection entry on due date: unit OPEN, next action FIRST_REMINDER_EMAIL next day, job queued for next day | `TC07-A-Collection.spec.ts` steps 4–6 (`cleanCollectionJobs`, `setCcpTime`, `createAndRunDailyJob`, `getCollectionInfo('FIRST_REMINDER_EMAIL')`) | Q11, Q12, Q13 asserts (same jobid in next day's schedule) | 90% | S |
-| 3 | TC-07 | First reminder sent; next action INACTIVATE_SUBSCRIPTION at due + 5 (Monday if weekend) | `TC07-A-Collection.spec.ts` steps 7–8 (`runExistingDailyJob`, `getNextCancellationAction`) | Q14 email `FIRST_PAYMENT_REMINDER = SUCCESS`; date rule assert from Prep 4 | 90% | S |
-| 4 | TC-08 | Suspension: SUSPEND order COMPLETED, subscription + services SUSPENDED, email | `TC07-A-Collection.spec.ts` steps 9–14 (`getSuspendOrder`, `completeSuspendProvisioning`, `submitSuspendOrder`, `verifySuspended`) | Q15, Q16, Q14 asserts; next action NOTIFY_CANCELLATION_TO_CRM date | 90% | S |
-| 5 | TC-10 | Pay both open invoices while suspended → RESUME order → ACTIVE, collections CLOSED | `TC08.spec.ts` step 4 (`payBill` + `processOrder('RESUME')`, `verifyServiceStatus`) | `payInvoices` with two allocations (R03); Q07, Q11, Q15, Q16 | 85% | S |
-| 6 | TC-20 | Same as TC-10 but after the cancellation notice was sent | Same as TC-10 | Only the precondition differs | 85% | S |
-| 7 | TC-15 | One PO_VOIP charge only, linked to the VOIP service (known failing, EFT-97) | `queryDatabase` | New 20-line spec: Q18 → group by `priceofferid`, assert no duplicate on IPTV | 80% | S |
-| 8 | TC-09 | Billing while suspended: cutoff-month invoice = full month (days used + 10 capped); notice at cutoff + 10 | `TC08.spec.ts` step 2 (`runNextBillingCycle` with service SUSPENDED); `TC13-A-Viewing.spec.ts` (`getLatestNotifyCancellationDate`) | Compare Bill Total (cells[7] in `readInvoices`) with the previous full invoice; notice date assert | 80% | S |
-| 9 | TC-18 | Same as TC-09 with the "+11" rule (option B) | Same as TC-09 | Rule flag only | 80% | S |
-| 10 | TC-19 | A month fully suspended is not billed: bill unit closed at ₡0, no invoice | `TC08.spec.ts` step 6 (billing while suspended) | A `verifyNoInvoice(period)` variant of `verifyBill` (today it demands STAMPED); Q08 total 0 | 75% | S |
+| 1 | TC-05 | Invoices due on the 18th | `TC05-RecurringBilling.spec.ts` | **Spec written:** `TC790115-05-Billing.spec.ts` (logs due day vs 18) | 100% | done |
+| 2 | TC-06 | Collection entry on due date | `TC07-A-Collection.spec.ts` steps 4–6 | **Spec written:** `TC790115-06-08-Collection.spec.ts` | 100% | done |
+| 3 | TC-07 | First reminder; next action INACTIVATE_SUBSCRIPTION | `TC07-A-Collection.spec.ts` steps 7–8 | same spec (logs reminder and suspension dates vs sheet) | 100% | done |
+| 4 | TC-08 | Suspension | `TC07-A-Collection.spec.ts` steps 9–14 | same spec | 100% | done |
+| 5 | TC-10 | Pay open invoices while suspended → RESUME → ACTIVE | `TC08.spec.ts` step 4 | **Spec written:** `TC790115-10-PayResume.spec.ts` (one request, every open invoice) | 100% | done |
+| 6 | TC-20 | Same as TC-10 after the notice | same | reuse `TC790115-10-PayResume.spec.ts` | 100% | done |
+| 7 | TC-15 | One PO_VOIP charge only (known failing, EFT-97) | none | **Spec written:** `TC790115-15-Charges.spec.ts` (Q18 report only, no assert) | 100% | done |
+| 8 | TC-09 | Billing while suspended; notice date | `TC08.spec.ts` step 2, `TC08-A` step 8 | **Spec written:** `TC790115-09-BillingSuspended.spec.ts` (logs total vs previous invoice, notice vs +10 / +1) | 100% | done |
+| 9 | TC-18 | Same as TC-09, +11 rule | same | reuse `TC790115-09-BillingSuspended.spec.ts` | 100% | done |
+| 10 | TC-19 | Month fully suspended not billed | same | reuse `TC790115-09-BillingSuspended.spec.ts` (reports no invoice instead of failing) | 100% | done |
 
 ### Tier B — mostly reuse, one or two new pieces each
 
 | # | TC | What it checks | Existing code to reuse | What's missing | Have | Size |
 | --- | --- | --- | --- | --- | --- | --- |
-| 11 | TC-01 | Provision Internet + IPTV + VOIP from the UI; order COMPLETED; subscription + 3 services ACTIVE; billingdom 1 | `test-1.spec.ts` (API create, order wizard, provisioning data, submit, wait ACTIVE) | New template (Prep 5); Q02–Q05 asserts; **Nokia request check only if real provisioning (Prep 3)** | 70% (fake) / 35% (real) | S / L |
+| 11 | TC-01 | Provision Internet + IPTV + VOIP from the UI; services ACTIVE | `test-11.spec.ts` (API create, order wizard, provisioning data, submit, wait ACTIVE) | **Done:** `tests/test-790115.spec.ts`, passed headed on demo 2026-10-26 (account 9000263) | 100% | done |
 | 12 | TC-12 + TC-13 | Underpayment by ₡2 stays open; then ₡1.50 closes it with a ₡0.50 rounding adjustment | `TC08.spec.ts` `payBill` (reads Due from the Bills table) | Amount parameter (`due - 2`, then `1.50`); Q17; read Billing Data › Transactions for "Ajuste por redondeo en pago" (new, small UI read); threshold check in Basic Settings › Currency (read-only) | 70% | S–M |
 | 13 | TC-17 | Notice to Coopeweb the day after suspension (EFT-102) | `TC13-A-Viewing.spec.ts` (reads the NOTIFY date); `runExistingDailyJob` | Process that day, Q10 + Q11 asserts; open the collection unit actions table (19 reminder · 21 inactivate · 22 notice) | 70% | S (after TC-16) |
 | 14 | TC-02 | Negative: wizard rejects an ONT already registered on another order (duplicate key) | `test-1.spec.ts` steps 5–7 (wizard) | Run the wizard **without** the "rename old provisioningid" step 1; expect the error toast instead of "Create Order successfully!"; Q01 shows the other order. Needs a second account that already holds the ONT (the previous run's account works) | 65% | S–M |
@@ -76,6 +78,20 @@ Legend: **Have** = rough share of the test that is already written somewhere. **
 | 23 | TC-24 | ESPECIAL profile: suspension at due + 12, next business day on weekends, February case | Collection engine; date helper | Account with `collectionProfile` ESPECIAL (payload value unknown, today always `Normal`); profile set to +12 / SIGUIENTE_DÍA_HÁBIL; three scenarios incl. moving CCP to February; **blocked** (Huy / Coope) | 25% | L |
 | 24 | TC-25 | Changing the profile (+14 → +12) does not move an already planned suspension | Collection engine | Change collection profile in the UI (not automated anywhere); ESPECIAL account; **blocked** (Huy) | 20% | L |
 
+## Run log
+
+**2026-10-27, demo, account 9000263** (created 2026-10-26 by TC-01; sandbox dates 2068). Every Tier A spec run headed, one at a time.
+
+| Spec | Result | What the UI showed vs. the sheet |
+| --- | --- | --- |
+| TC790115-05-Billing | pass | First bill 2068-09-21 → 10-01 prorated, invoice 418789 total 8376.92, due 2068-10-18 (day 18: match) |
+| TC790115-06-08-Collection | pass | Invoice 418791 (full month 25130.76) due 11-18; FIRST_REMINDER_EMAIL 11-19 (match); INACTIVATE_SUBSCRIPTION 11-21 (EFT-102 rule: match; due + 5 rule: differs). So demo already applies EFT-102. SUSPEND order ORD-40094, services SUSPENDED |
+| TC790115-09-BillingSuspended | pass | Cutoff month billed in full: 418793 total 25130.76 = previous invoice (match); NOTIFY_CANCELLATION_TO_CRM 11-22 = suspension + 1 (EFT-102) |
+| TC790115-10-PayResume | pass on 3rd run | 1st run: 3 invoices in one applyPayment → two SUCCESS, third FAILED with a Postgres deadlock inside Embrix (`balance_unit_balances`), and the multi-invoice response is `{ paymentDetails: [...] }`, not `{ status }`. Helper now reads both shapes and retries a failed allocation once. 2nd run: the failed run had left RESUME order ORD-40095 with a FAILED step; a second RESUME (ORD-40096) was created and "Submit order" acted on the first one. `processOrder` now completes every incomplete order of the type before submitting. 3rd run: ACTIVE. ORD-40096 is left at PROVISIONING_ERROR (duplicate, harmless) |
+| TC790115-15-Charges | pass | One PO_VOIP, on the VOIP service; no duplicate (EFT-97 not reproduced on this package) |
+
+Open point: paying three invoices in one request deadlocked once. Worth raising with the devs (the sheet's R03 pays two).
+
 ## Suggested suite shape
 
 One new runner `TS790115.spec.ts` on one account, in this order (same contract, dates move forward, like the sheet says):
@@ -88,6 +104,8 @@ TC-01 (create + provision)
 → TC-11 (prorated month) → TC-12 → TC-13 (threshold) → TC-15 (Q18)
 → TC-16 → TC-17 → TC-18 → TC-19 → TC-20 → TC-21   (EFT-102 block, after the release)
 ```
+
+Suite runner: `tests/TS790115.spec.ts` (TC-01 → TC-05 → TC-06/07/08 → TC-09 → TC-10 → TC-15).
 
 Separate accounts: TC-22 (due date ≥ 20), TC-02 (needs the ONT held by another order), TC-23 (×3), TC-24 / TC-25 (ESPECIAL). TC-14 can run on the main account at the end once PDF parsing exists.
 
