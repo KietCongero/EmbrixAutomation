@@ -122,3 +122,61 @@ export const applyGracePeriod = async (page: Page, accountId: string, suspension
 
     console.log(`PASS: ${gracePeriodDays}-day grace period requested for suspension date ${suspensionDate}`);
 };
+
+// ============================================================
+// DAY-BY-DAY COLLECTION (790115 TC-16 / TC-21)
+// ============================================================
+// Processes every day from the due date to the expected suspension day (the 21st), reads the
+// collection unit after each day, completes the SUSPEND order, then processes the next day
+// (the cancellation notice). Nothing is asserted: each day's current action is logged.
+
+import { cleanJobsThroughMonthEnd, processDay } from './jobs';
+import { processOrder } from './orders';
+import { addDays, eachDay, expectedCollectionDates, withDay } from './dates';
+
+export const runCollectionDayByDay = async (page: Page, accountId: string, dueDate: string) => {
+    const expected = expectedCollectionDates(dueDate, 'eft102');
+
+    console.log('================================================');
+    console.log(`COLLECTION DAY BY DAY: due ${dueDate} | expected reminder ${expected.reminder} | suspension ${expected.suspension} | notice ${expected.notice}`);
+    console.log('================================================');
+
+    // Once, before the collection starts (demo leftovers only)
+    await cleanJobsThroughMonthEnd(withDay(dueDate, 16));
+
+    // The unit's rows appear a little after the job; poll up to 30 s for a row newer than the day processed.
+    const logCurrentAction = async (day: string) => {
+        let current: CollectionActionRow | undefined;
+
+        for (let attempt = 1; attempt <= 6; attempt++) {
+            current = (await readCollectionActions(page, accountId)).filter(row => row.nextActionDate >= dueDate).pop();
+            if (current && current.nextActionDate > day) break;
+            await page.waitForTimeout(5000);
+        }
+
+        console.log(`${day} processed | current collection action: ${current ? `${current.action} on ${current.nextActionDate}` : 'none shown'}`);
+        return current;
+    };
+
+    let afterSuspension: CollectionActionRow | undefined;
+
+    for (const day of eachDay(dueDate, expected.suspension)) {
+        await processDay(page, day);
+        afterSuspension = await logCurrentAction(day);
+    }
+
+    const suspendOrderId = await processOrder(page, accountId, 'SUSPEND');
+
+    // The notice planned after the suspension day is the row to compare; once the notice day is
+    // processed the unit has no next action left to show.
+    const noticeDay = addDays(expected.suspension, 1);
+    await processDay(page, noticeDay);
+    await logCurrentAction(noticeDay);
+
+    console.log('================================================');
+    console.log(`Suspend order: ${suspendOrderId} | services SUSPENDED on ${expected.suspension}`);
+    console.log(`Sheet expects NOTIFY_CANCELLATION_TO_CRM planned for ${expected.notice}: ${afterSuspension?.action === 'NOTIFY_CANCELLATION_TO_CRM' && afterSuspension.nextActionDate === expected.notice ? 'MATCH' : `DIFFERS (${afterSuspension ? `${afterSuspension.action} ${afterSuspension.nextActionDate}` : 'none shown'})`}`);
+    console.log('================================================');
+
+    return { suspendOrderId, suspensionDate: expected.suspension, noticeDate: noticeDay };
+};

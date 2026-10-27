@@ -38,29 +38,28 @@ const postPayment = async (request: APIRequestContext, accountId: string, alloca
     return allocations.map((allocation, index) => ({ invoiceId: allocation.invoiceId, ...(details[index] ?? { status: 'MISSING' }) }));
 };
 
-// Fails when any allocation is not SUCCESS. A FAILED allocation (seen: Postgres deadlock inside
-// Embrix when three invoices were paid in one request) is retried once on its own.
-export const payInvoices = async (request: APIRequestContext, accountId: string, allocations: Allocation[], paymentSourceId = '') => {
+// With { strict: false } a FAILED allocation is reported and returned instead of failing the test.
+// Seen on demo: paying two or three invoices in one request makes Embrix report a Postgres deadlock
+// on one allocation even though that payment is applied (a retry answers "Invoice due already paid").
+// payAllOutstandingInvoices therefore checks the Bills table after the request rather than retrying.
+export const payInvoices = async (request: APIRequestContext, accountId: string, allocations: Allocation[], paymentSourceId = '', options: { strict?: boolean } = {}) => {
     if (!env.apiToken) throw new Error('Missing EMBRIX_API_TOKEN');
     if (allocations.length === 0) throw new Error('No invoices to pay');
 
-    let results = await postPayment(request, accountId, allocations, paymentSourceId);
+    const results = await postPayment(request, accountId, allocations, paymentSourceId);
     const failed = results.filter(result => result.status !== 'SUCCESS');
 
     if (failed.length > 0) {
-        console.log(`WARNING: ${failed.length} allocation(s) did not succeed: ${failed.map(f => `${f.invoiceId} ${f.status} ${f.errorMsg?.split('\n')[0] ?? ''}`).join(' | ')}. Retrying once...`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
-        const retried = await postPayment(request, accountId, allocations.filter(a => failed.some(f => f.invoiceId === a.invoiceId)), paymentSourceId);
-
-        results = results.map(result => retried.find(r => r.invoiceId === result.invoiceId) ?? result);
+        console.log(`WARNING: ${failed.length} allocation(s) did not succeed: ${failed.map(f => `${f.invoiceId} ${f.status} ${f.errorMsg?.split('\n')[0] ?? ''}`).join(' | ')}`);
     }
 
-    for (const result of results) {
-        expect(result.status, `Payment for invoice ${result.invoiceId} did not succeed: ${result.errorMsg ?? result.status}`).toBe('SUCCESS');
+    if (options.strict !== false) {
+        for (const result of results) {
+            expect(result.status, `Payment for invoice ${result.invoiceId} did not succeed: ${result.errorMsg ?? result.status}`).toBe('SUCCESS');
+        }
     }
 
-    console.log(`PASS: Payment accepted for ${results.map(r => `${r.invoiceId} (${r.id})`).join(', ')}`);
+    console.log(`Payment result: ${results.map(r => `${r.invoiceId} ${r.status}${r.id ? ` (${r.id})` : ''}`).join(', ')}`);
 
     return results;
 };
@@ -104,9 +103,22 @@ export const payAllOutstandingInvoices = async (page: Page, request: APIRequestC
 
     if (outstanding.length === 0) throw new Error(`No outstanding invoices found for account ${accountId}`);
 
-    await payInvoices(request, accountId, outstanding.map(invoice => ({ invoiceId: invoice.invoiceId, amount: invoice.due })));
+    const results = await payInvoices(request, accountId, outstanding.map(invoice => ({ invoiceId: invoice.invoiceId, amount: invoice.due })), '', { strict: false });
 
-    for (const invoice of outstanding) await waitForInvoiceClosed(page, accountId, invoice.invoiceId);
+    for (const invoice of outstanding) {
+        const result = results.find(r => r.invoiceId === invoice.invoiceId);
+
+        try {
+            await waitForInvoiceClosed(page, accountId, invoice.invoiceId);
+            if (result?.status !== 'SUCCESS') console.log(`Invoice ${invoice.invoiceId} is CLOSED although its allocation answered ${result?.status}: the payment was applied`);
+        } catch (error) {
+            if (result?.status === 'SUCCESS') throw error;
+
+            console.log(`Invoice ${invoice.invoiceId} still open after a ${result?.status} allocation: paying it on its own`);
+            await payInvoices(request, accountId, [{ invoiceId: invoice.invoiceId, amount: invoice.due }]);
+            await waitForInvoiceClosed(page, accountId, invoice.invoiceId);
+        }
+    }
 
     return outstanding;
 };

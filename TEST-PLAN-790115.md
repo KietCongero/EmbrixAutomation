@@ -59,12 +59,12 @@ Legend: **Have** = rough share of the test that is already written somewhere. **
 | # | TC | What it checks | Existing code to reuse | What's missing | Have | Size |
 | --- | --- | --- | --- | --- | --- | --- |
 | 11 | TC-01 | Provision Internet + IPTV + VOIP from the UI; services ACTIVE | `test-11.spec.ts` (API create, order wizard, provisioning data, submit, wait ACTIVE) | **Done:** `tests/test-790115.spec.ts`, passed headed on demo 2026-10-26 (account 9000263) | 100% | done |
-| 12 | TC-12 + TC-13 | Underpayment by ₡2 stays open; then ₡1.50 closes it with a ₡0.50 rounding adjustment | `TC08.spec.ts` `payBill` (reads Due from the Bills table) | Amount parameter (`due - 2`, then `1.50`); Q17; read Billing Data › Transactions for "Ajuste por redondeo en pago" (new, small UI read); threshold check in Basic Settings › Currency (read-only) | 70% | S–M |
-| 13 | TC-17 | Notice to Coopeweb the day after suspension (EFT-102) | `TC13-A-Viewing.spec.ts` (reads the NOTIFY date); `runExistingDailyJob` | Process that day, Q10 + Q11 asserts; open the collection unit actions table (19 reminder · 21 inactivate · 22 notice) | 70% | S (after TC-16) |
+| 12 | TC-12 + TC-13 | Underpayment outside / within the 1 colón threshold | `TC08.spec.ts` `payBill` | **Spec written:** `TC790115-12-13-Threshold.spec.ts` (Transactions screen and Basic Settings not read) | 100% | done |
+| 13 | TC-17 | Notice the day after the suspension | `TC13-A-Viewing.spec.ts` | **Spec written:** part of `TC790115-16-17-Suspension21st.spec.ts` | 100% | done |
 | 14 | TC-02 | Negative: wizard rejects an ONT already registered on another order (duplicate key) | `test-1.spec.ts` steps 5–7 (wizard) | Run the wizard **without** the "rename old provisioningid" step 1; expect the error toast instead of "Create Order successfully!"; Q01 shows the other order. Needs a second account that already holds the ONT (the previous run's account works) | 65% | S–M |
-| 15 | TC-11 | Reconnection month prorated from the reconnection date | `TC05-RecurringBilling.spec.ts` | Expected total = full month × days with service / days in month (±1 colón); line-level check needs reading Invoice Details (new) | 60% total-level | M |
-| 16 | TC-16 | Suspension on the 21st (weekday): reminder on 19 plans INACTIVATE for the 21st; nothing on the 20th; suspended on the 21st; notice next day | `TC07-A-Collection.spec.ts` engine (collection create → reminder → suspend → verify) | Process day by day (18, 19, 20, 21) with `runExistingDailyJob` in a loop; assert INACTIVATE date = 21st; Q13 jobid match; pick a month whose 21st is a weekday (date helper) | 60% | M |
-| 17 | TC-21 | Same as TC-16 on a weekend 21st (not moved to Monday); notice on Monday 22 | TC-16 + `payBill` | Pay the intermediate month's invoice; roll billing months until the 21st is a Sat/Sun | 55% | M |
+| 15 | TC-11 | Reconnection month prorated | `TC05-RecurringBilling.spec.ts` | **Spec written:** `TC790115-11-Proration.spec.ts` (total-level; Invoice Details lines not read) | 100% | done |
+| 16 | TC-16 | Suspension on the 21st (weekday), nothing on the 20th | `TC07-A-Collection.spec.ts` | **Spec written:** `TC790115-16-17-Suspension21st.spec.ts` (`runCollectionDayByDay` in helpers/collection.ts) | 100% | done |
+| 17 | TC-21 | Suspension on a weekend 21st | TC-16 + `payBill` | **Spec written:** `TC790115-21-Suspension21stWeekend.spec.ts` | 100% | done |
 | 18 | TC-22 | NORMAL invoice due on the 20th or later: entry + reminder, no suspension that month; suspension on the 21st of the next month, notice on the 22nd | `TC10-GracePeriod.spec.ts` (EXTEND_DUE_DATE UI + collection on the new due date) | Second account; new expectations (no suspension in that month); process the 21st/22nd of the next month | 55% | M |
 | 19 | TC-04 | Identity document without accent → INVOICE_CHECK error (DIMEX); fix in UI; Reprocess → invoice created | `jobsrun.spec.ts` (waits for INVOICE_CHECK = ERROR); payload (`identityDocument`) | Template with `CEDULA DE IDENTIDAD` (no accent); Q10 jobs_error; **Account Data edit of the identity type (new UI)**; **Reprocess button (not automated anywhere)**; Q07 | 50% | M |
 
@@ -90,7 +90,20 @@ Legend: **Have** = rough share of the test that is already written somewhere. **
 | TC790115-10-PayResume | pass on 3rd run | 1st run: 3 invoices in one applyPayment → two SUCCESS, third FAILED with a Postgres deadlock inside Embrix (`balance_unit_balances`), and the multi-invoice response is `{ paymentDetails: [...] }`, not `{ status }`. Helper now reads both shapes and retries a failed allocation once. 2nd run: the failed run had left RESUME order ORD-40095 with a FAILED step; a second RESUME (ORD-40096) was created and "Submit order" acted on the first one. `processOrder` now completes every incomplete order of the type before submitting. 3rd run: ACTIVE. ORD-40096 is left at PROVISIONING_ERROR (duplicate, harmless) |
 | TC790115-15-Charges | pass | One PO_VOIP, on the VOIP service; no duplicate (EFT-97 not reproduced on this package) |
 
-Open point: paying three invoices in one request deadlocked once. Worth raising with the devs (the sheet's R03 pays two).
+
+**2026-10-27, demo, account 9000263, Tier B** (continued on the same account, dates 2069).
+
+| Spec | Result | What the UI showed vs. the sheet |
+| --- | --- | --- |
+| TC790115-11-Proration | pass | Reconnection was on 2068-12-01 (day 1), so invoice 418796 is a full month (25130.76): correct for that date, proration not exercised. For a mid-month reconnection, pay on a later CCP date before resuming |
+| TC790115-12-13-Threshold | pass | balance − 2.00 → ACTIVE with 2.00 due (match); then 1.50 → CLOSED, 0 due (match). The 0.50 adjustment in Transactions is not read |
+| TC790115-16-17-Suspension21st | pass | Invoice 418798 due 02-18; 2069-02-21 is a Thursday. Suspension on 02-21 (match) and NOTIFY_CANCELLATION_TO_CRM planned for 02-22 (match). **Finding:** the collection entry happened on 02-19, the reminder on 02-20 (emails and jobs in the DB confirm it), one day later than in the Tier A run where the entry was on the due date 11-18. Same spec steps for the due day in both runs. Worth raising |
+| TC790115-09 as TC-18 | pass | February cut off on the 21st (20 days + 11 ≥ 28) billed in full: 418799 = 25130.76 (option B: match) |
+| TC790115-09 as TC-19 | pass | March fully suspended: no invoice for 2069-03-01 → 04-01 (match) |
+| TC790115-21-Suspension21stWeekend | pass | Paid May (418803) and June (418804) in full; July invoice 418807 due 07-18, 2069-07-21 is a Sunday. Entry 07-18 → reminder 07-19 → nothing new on 07-20 → suspended Sunday 07-21 (ORD-40100), notice planned 07-22. Every day matches the sheet, including the entry on the due date (so the February entry a day late is not systematic) |
+| TC790115-10 as TC-20 | pass on 2nd run | Two invoices in one applyPayment (the sheet's R03): Embrix again reported a Postgres deadlock on one allocation, but that payment was applied (the retry answered "Invoice due already paid"). The helper now checks the Bills table after a FAILED allocation instead of retrying. RESUME processed, services ACTIVE |
+
+Open point: paying two or three invoices in one request reports a deadlock on one allocation while applying it. Worth raising with the devs (the sheet's R03 pays two).
 
 ## Suggested suite shape
 

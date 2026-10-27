@@ -175,6 +175,10 @@ Rules: `INSTRUCTIONS-790115.md`. Plan and status: `TEST-PLAN-790115.md`. Each sp
 | TC-09 (also TC-18, TC-19) | `tests/TC790115-09-BillingSuspended.spec.ts` | `TC08` step 2, `TC08-A` step 8 |
 | TC-10 (also TC-20) | `tests/TC790115-10-PayResume.spec.ts` | `TC08` step 4, paying every open invoice in one request (R03) |
 | TC-15 | `tests/TC790115-15-Charges.spec.ts` | none (Q18 report, no browser) |
+| TC-11 | `tests/TC790115-11-Proration.spec.ts` | `TC05-RecurringBilling`, logs total vs. last full month |
+| TC-12, TC-13 | `tests/TC790115-12-13-Threshold.spec.ts` | `TC08` payBill with a partial amount |
+| TC-16, TC-17 | `tests/TC790115-16-17-Suspension21st.spec.ts` | `TC07-A-Collection`, one day at a time (`runCollectionDayByDay`) |
+| TC-21 | `tests/TC790115-21-Suspension21stWeekend.spec.ts` | same, billing and paying month by month until the 21st is a weekend |
 
 ## Shared helpers (`helpers/`)
 

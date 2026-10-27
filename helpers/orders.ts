@@ -16,7 +16,8 @@ export const getIncompleteOrders = async (page: Page, accountId: string, orderTy
     await expect(page.getByRole('heading', { name: 'In-complete Orders' })).toBeVisible();
 
     for (let attempt = 1; attempt <= attempts; attempt++) {
-        const rows = page.getByRole('row').filter({ hasText: orderType }).filter({ hasText: 'ORD-' });
+        // Match the Type cell exactly: the Reason column of a RESUME order can contain the word SUSPEND
+        const rows = page.getByRole('row').filter({ has: page.getByRole('cell', { name: orderType, exact: true }) }).filter({ hasText: 'ORD-' });
         const orderIds: string[] = [];
 
         for (let i = 0; i < await rows.count(); i++) {
