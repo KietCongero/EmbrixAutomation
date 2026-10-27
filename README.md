@@ -162,6 +162,28 @@ These test cases don't fully match the expected results in the regression case y
 | TC-15 (tax exemption) | `test-15.spec.ts` | May be fixed; needs retesting |
 | TC-16 (PHC account) | `TS08.spec.ts`, `test-16.spec.ts`, `TC16-Graph.spec.ts` | Doesn't match the regression case; needs checking |
 
+## Shared helpers (`helpers/`)
+
+New specs import the shared pieces instead of copying them. Import everything from `../helpers`:
+
+```ts
+import { login, processDay, runNextBillingCycle, payAllOutstandingInvoices, processOrder, q11CollectionUnits } from '../helpers';
+```
+
+| Module | What it holds |
+| --- | --- |
+| `helpers/ui.ts` | `login`, `openAccount`, `openServices`, `openBills`, `openCustomerActivity`, `verifyServiceStatus` |
+| `helpers/ccp.ts` | `runGraphql`, `getCcpTime`, `setCcpTime`, `ensureCcpAtOrAfter` (R01 / R02) |
+| `helpers/jobs.ts` | `cleanJobs` (refuses when the schedule has pending jobs, Q09), `createAndRunDailyJob`, `runExistingDailyJob`, `reprocessDailyJob`, `processDay`, `processEmbrixDay`, `runBillingDailyJob` (R05) |
+| `helpers/billing.ts` | `readInvoices`, `getOutstandingInvoices`, `getNextPendingBill`, `getStampedBillByPeriod`, `runNextBillingCycle`, `runBillingCycleExpectingNoInvoice`, `extendDueDate` |
+| `helpers/collection.ts` | `readCollectionActions`, `getCollectionAction`, `expectCollectionAction`, `applyGracePeriod` |
+| `helpers/payments.ts` | `payInvoices` (R03 / R04), `payOldestInvoice`, `payAllOutstandingInvoices`, `payInvoicePartially`, `waitForInvoiceClosed` |
+| `helpers/orders.ts` | `getIncompleteOrder`, `completeOrderProvisioning`, `processOrder`, `executeManualOrder` (SUSPEND / RESUME, fake provisioning) |
+| `helpers/dates.ts` | date arithmetic, `expectedCollectionDates` (legacy vs. EFT-102 rule, `COLLECTION_RULE`), cutoff and proration day counts |
+| `helpers/queries.ts` | Q01–Q18 from the 790115 sheet as functions (`q07BillUnitsAndInvoices(accountId)`, …) |
+
+The existing `tests/*.spec.ts` still carry their own copies of these functions; they were left as they are. See `TEST-PLAN-790115.md` for which new test case uses which helper.
+
 ## CoopeG regression matrix
 
 The source of truth for scenarios and expected results is **REGRESSION SUITE ENGLISH - COOPEGUANACASTE.csv**. This table maps suites to test cases; it doesn't mean every case is automated.
