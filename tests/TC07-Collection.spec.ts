@@ -106,18 +106,24 @@ test('existing stamped bill -> collection -> first reminder', async ({ page }) =
 
     const cleanCollectionJobs = async (referenceDate: string) => {
         const [year, month] = referenceDate.split('-').map(Number);
-        const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
         console.log('================================================');
-        console.log(`Cleaning collection jobs from ${year}-${String(month).padStart(2, '0')}-16 through end of month`);
+        console.log(`Cleaning collection jobs from ${year}-${String(month).padStart(2, '0')}-16 onward`);
         console.log('================================================');
 
-        for (let day = 16; day <= lastDay; day++) {
-            const targetDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            await cleanJobs(targetDate);
+        const fromDate = `${year}-${String(month).padStart(2, '0')}-16`;
+        // Every date from day 16 on, not just this month: on demo, jobs left by earlier runs past
+        // month end hang Process / Create Job Schedule when a reminder or suspension lands there.
+        const dates = await queryDatabase<{ date: string }>(
+            `SELECT DISTINCT scheduledate::date::text AS date FROM core_engine.job_schedule WHERE scheduledate >= $1 ORDER BY 1`,
+            [fromDate]
+        );
+
+        for (const { date } of dates) {
+            await cleanJobs(date);
         }
 
-        console.log(`PASS: Collection jobs cleaned from day 16 through day ${lastDay}`);
+        console.log(`PASS: Collection jobs cleaned from ${fromDate} (${dates.length} date(s))`);
     };
 
     // ============================================================
