@@ -16,7 +16,7 @@ export function readLastRun(): LastRun | null {
     return JSON.parse(fs.readFileSync(lastRunFile, 'utf8'));
 }
 
-function saveLastRun(accountId: string) {
+export function saveLastRun(accountId: string) {
     const lastRun: LastRun = { accountId, orderId: `ORD${accountId}`, createdAt: new Date().toISOString() };
 
     fs.mkdirSync(path.dirname(lastRunFile), { recursive: true });

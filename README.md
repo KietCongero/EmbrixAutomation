@@ -170,6 +170,7 @@ Rules: `INSTRUCTIONS-790115.md`. Plan and status: `TEST-PLAN-790115.md`. Each sp
 | Sheet case | Spec | Copied from |
 | --- | --- | --- |
 | TC-01 | `tests/test-790115.spec.ts` | `test-11` |
+| TC-02 (negative) | `tests/TC790115-02-DuplicateOnt.spec.ts` | `test-11` wizard without the stale-row rename; creates a throwaway account and restores the last-run file |
 | TC-05 | `tests/TC790115-05-Billing.spec.ts` | `TC05-RecurringBilling` |
 | TC-06, TC-07, TC-08 | `tests/TC790115-06-08-Collection.spec.ts` | `TC07-A-Collection` |
 | TC-09 (also TC-18, TC-19) | `tests/TC790115-09-BillingSuspended.spec.ts` | `TC08` step 2, `TC08-A` step 8 |
