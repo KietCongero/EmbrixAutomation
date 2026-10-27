@@ -65,8 +65,8 @@ Legend: **Have** = rough share of the test that is already written somewhere. **
 | 15 | TC-11 | Reconnection month prorated | `TC05-RecurringBilling.spec.ts` | **Spec written:** `TC790115-11-Proration.spec.ts` (total-level; Invoice Details lines not read) | 100% | done |
 | 16 | TC-16 | Suspension on the 21st (weekday), nothing on the 20th | `TC07-A-Collection.spec.ts` | **Spec written:** `TC790115-16-17-Suspension21st.spec.ts` (`runCollectionDayByDay` in helpers/collection.ts) | 100% | done |
 | 17 | TC-21 | Suspension on a weekend 21st | TC-16 + `payBill` | **Spec written:** `TC790115-21-Suspension21stWeekend.spec.ts` | 100% | done |
-| 18 | TC-22 | NORMAL invoice due on the 20th or later: entry + reminder, no suspension that month; suspension on the 21st of the next month, notice on the 22nd | `TC10-GracePeriod.spec.ts` (EXTEND_DUE_DATE UI + collection on the new due date) | Second account; new expectations (no suspension in that month); process the 21st/22nd of the next month | 55% | M |
-| 19 | TC-04 | Identity document without accent → INVOICE_CHECK error (DIMEX); fix in UI; Reprocess → invoice created | `jobsrun.spec.ts` (waits for INVOICE_CHECK = ERROR); payload (`identityDocument`) | Template with `CEDULA DE IDENTIDAD` (no accent); Q10 jobs_error; **Account Data edit of the identity type (new UI)**; **Reprocess button (not automated anywhere)**; Q07 | 50% | M |
+| 18 | TC-22 | Invoice due on the 20th or later: no suspension that month, suspension on the 21st of the next month, notice on the 22nd | `TC10-GracePeriod.spec.ts` | **Spec written:** `TC790115-22-DueDate20Plus.spec.ts` (runs on TC-04's account) | 100% | done |
+| 19 | TC-04 | Identity document without accent → DIMEX error; fix; Reprocess → invoice | `test-790115.spec.ts` + `jobsrun.spec.ts` | **Spec written:** `TC790115-04-IdentityDocument.spec.ts` (Contact page edit, Reprocess button) | 100% | done |
 
 ### Tier C — new work or blocked on the environment
 
@@ -100,11 +100,16 @@ Legend: **Have** = rough share of the test that is already written somewhere. **
 | TC790115-16-17-Suspension21st | pass | Invoice 418798 due 02-18; 2069-02-21 is a Thursday. Suspension on 02-21 (match) and NOTIFY_CANCELLATION_TO_CRM planned for 02-22 (match). **Finding:** the collection entry happened on 02-19, the reminder on 02-20 (emails and jobs in the DB confirm it), one day later than in the Tier A run where the entry was on the due date 11-18. Same spec steps for the due day in both runs. Worth raising |
 | TC790115-09 as TC-18 | pass | February cut off on the 21st (20 days + 11 ≥ 28) billed in full: 418799 = 25130.76 (option B: match) |
 | TC790115-09 as TC-19 | pass | March fully suspended: no invoice for 2069-03-01 → 04-01 (match) |
+| cancel.spec (CANCEL_ACCOUNT_ID=9000263) | pass | Owner's go-ahead on 2026-10-27. The two leftover RESUME orders were cancelled first, then the subscription closed at CCP 2069-07-22. Fake ONT free again |
+| TC790115-04-IdentityDocument | pass | New account 9000265 (CEDULA DE IDENTIDAD, no accent) provisioned; billing 2069-08-01 → INVOICE_CHECK ERROR "receptor identificacion DIMEX debe contener 10 digitos" (match); Contact page fixed to CÉDULA DE IDENTIDAD; Reprocess button present and used; invoice 418810 (8106.71) due 2069-08-18 (match) |
+| TC790115-22-DueDate20Plus | pass on 2nd run | Account 9000265, invoice 418810 due 08-18 extended to 08-30. Entry showed only after 08-31 was processed (reminder planned 09-01: differs from 08-31); no suspension in August; INACTIVATE on 2069-09-21 (match, the 21st of the next month, a Saturday); NOTIFY_CANCELLATION_TO_CRM 09-22 (match). The first run assumed the sheet's day sequence and stopped when no 09-21 schedule existed yet; the spec now follows the unit's planned actions and can resume |
 | TC790115-02-DuplicateOnt | pass | Throwaway account 9000264 with its incomplete order; the wizard's Create was rejected with "duplicate key value: ProvisioningId already exist in service_provision" (core_oms.validate_order_service_provisions). No order created; last-run restored to 9000263 |
 | TC790115-21-Suspension21stWeekend | pass | Paid May (418803) and June (418804) in full; July invoice 418807 due 07-18, 2069-07-21 is a Sunday. Entry 07-18 → reminder 07-19 → nothing new on 07-20 → suspended Sunday 07-21 (ORD-40100), notice planned 07-22. Every day matches the sheet, including the entry on the due date (so the February entry a day late is not systematic) |
 | TC790115-10 as TC-20 | pass on 2nd run | Two invoices in one applyPayment (the sheet's R03): Embrix again reported a Postgres deadlock on one allocation, but that payment was applied (the retry answered "Invoice due already paid"). The helper now checks the Bills table after a FAILED allocation instead of retrying. RESUME processed, services ACTIVE |
 
-Open point: paying two or three invoices in one request reports a deadlock on one allocation while applying it. Worth raising with the devs (the sheet's R03 pays two).
+Open point: paying two or three invoices in one request reports a deadlock on one allocation while applying it.
+
+Open point: the collection entry lands either on the due date (2068-11-18, 2069-07-18) or the day after (2069-02-18 → 19, 2069-08-30 → 31), with the same steps each time. The reminder shifts with it; the suspension stays on the 21st. Worth asking the devs what decides it (job order inside the day's schedule?). Worth raising with the devs (the sheet's R03 pays two).
 
 ## Suggested suite shape
 

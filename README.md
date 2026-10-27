@@ -172,6 +172,7 @@ Rules: `INSTRUCTIONS-790115.md`. Plan and status: `TEST-PLAN-790115.md`. Each sp
 | TC-01 | `tests/test-790115.spec.ts` | `test-11` |
 | TC-02 (negative) | `tests/TC790115-02-DuplicateOnt.spec.ts` | `test-11` wizard without the stale-row rename; creates a throwaway account and restores the last-run file |
 | TC-05 | `tests/TC790115-05-Billing.spec.ts` | `TC05-RecurringBilling` |
+| TC-04 | `tests/TC790115-04-IdentityDocument.spec.ts` | `test-11` steps with `tc790115-04-account.json` (identity document without accent), then billing, the Contact fix and Reprocess |
 | TC-06, TC-07, TC-08 | `tests/TC790115-06-08-Collection.spec.ts` | `TC07-A-Collection` |
 | TC-09 (also TC-18, TC-19) | `tests/TC790115-09-BillingSuspended.spec.ts` | `TC08` step 2, `TC08-A` step 8 |
 | TC-10 (also TC-20) | `tests/TC790115-10-PayResume.spec.ts` | `TC08` step 4, paying every open invoice in one request (R03) |
@@ -180,6 +181,7 @@ Rules: `INSTRUCTIONS-790115.md`. Plan and status: `TEST-PLAN-790115.md`. Each sp
 | TC-12, TC-13 | `tests/TC790115-12-13-Threshold.spec.ts` | `TC08` payBill with a partial amount |
 | TC-16, TC-17 | `tests/TC790115-16-17-Suspension21st.spec.ts` | `TC07-A-Collection`, one day at a time (`runCollectionDayByDay`) |
 | TC-21 | `tests/TC790115-21-Suspension21stWeekend.spec.ts` | same, billing and paying month by month until the 21st is a weekend |
+| TC-22 | `tests/TC790115-22-DueDate20Plus.spec.ts` | `TC10-GracePeriod` due-date extension, then the due day, the next day, and the 21st / 22nd of the next month. Runs on TC-04's account |
 
 ## Shared helpers (`helpers/`)
 

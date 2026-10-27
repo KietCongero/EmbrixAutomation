@@ -140,7 +140,16 @@ export const reprocessDailyJob = async (page: Page, targetDate: string) => {
     await fillJobDate(page, targetDate);
     await page.getByTitle('Refresh jobs').click();
     await page.waitForTimeout(5000);
-    await clickProcess(page, 'Reprocess');
+
+    const reprocess = page.getByRole('button', { name: 'Reprocess' });
+
+    if (await reprocess.isVisible().catch(() => false)) {
+        await clickProcess(page, 'Reprocess');
+    } else {
+        const buttons = (await page.getByRole('button').allInnerTexts()).map(text => text.trim()).filter(Boolean);
+        console.log(`WARNING: no Reprocess button for ${targetDate} (buttons: ${buttons.join(', ')}); using Process`);
+        await clickProcess(page, 'Process');
+    }
 
     await waitAfterJobRun(page);
 };
