@@ -1,12 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 
-import accountTemplate from '../test-data/tc790115-account.json';
+import defaultTemplate from '../test-data/tc790115-account.json';
 import { env } from '../config/environments';
 import { allocateTestAccount, queryDatabase, login, openServices, verifyServiceStatus } from '../helpers';
 
 // 790115 TC-01: same flow as test-11, with package PKG_INT_NA_TV_VOIP_100MBPS (Internet + IPTV + VOIP).
 // The ONT must already be free - checking that is a manual step (see README).
+// ACCOUNT_TEMPLATE=test-data/<file>.json creates the account from another template with the same
+// package (TC-24: tc790115-24-account.json, collectionProfile ESPECIAL).
+
+const accountTemplate: typeof defaultTemplate = process.env.ACCOUNT_TEMPLATE ? require(`../${process.env.ACCOUNT_TEMPLATE}`) : defaultTemplate;
 
 test('790115 TC-01 - create account, provision Internet + IPTV + VOIP, activate services', async ({ request, page }) => {
     test.setTimeout(20 * 60 * 1000);

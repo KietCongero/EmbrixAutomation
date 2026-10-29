@@ -1,4 +1,4 @@
-import { test } from '@playwright/test';
+import { test, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ACCOUNT_ID } from '../test-data/testIds';
@@ -10,12 +10,12 @@ import { login, readInvoices, logInvoices, q19InvoiceLines, q20InvoiceTaxLines, 
 // The known failure doubled the VOIP line (EFT-97) and the XML/PDF then counted the 911 / Cruz Roja
 // base twice (EFT-63, 9 Oct comment); both fixed in release 3.2.5.
 //
-// The PDF download is manual: open the invoice in the UI and save the PDF (the file Coope's UI
-// produces is named INVOICE_<account>_<invoice>_<date>.pdf). The spec finds it by invoice ID in
-// test-data/invoices/ (committed, for sharing) or ~/Downloads, or takes PDF_PATH:
+// The PDF comes from the invoice page (/invoices/<id> > Download, the file Coope's UI produces is
+// INVOICE_<account>_<invoice>_<date>.pdf) and is saved into test-data/invoices/ so it can be
+// committed and shared. PDF_PATH overrides it; if the download fails, a file already in
+// test-data/invoices/ or ~/Downloads with the invoice ID is used, then Embrix's stored copy
+// (invoice_unit.invoicebase64pdf):
 //   [INVOICE_ID=418817] [PDF_PATH=/path/to/invoice.pdf] npx playwright test TC790115-14 --headed
-// Without a file the spec prints the Embrix side (lines, Tax Lines, totals, balance) and, when
-// Embrix stored the PDF itself (invoice_unit.invoicebase64pdf), reads that one instead.
 // Each value is logged next to the PDF's, not asserted (run and check).
 
 const PDF_FOLDERS = [path.join(__dirname, '..', 'test-data', 'invoices'), path.join(process.env.HOME ?? '', 'Downloads')];
@@ -27,6 +27,39 @@ const findInvoicePdf = (invoiceId: string) => {
         if (file) return path.join(folder, file);
     }
     return undefined;
+};
+
+// Bills table > invoice ID button > invoice page (/invoices/<id>, opened directly it has no buttons)
+// > Download. Returns the saved path, or undefined when nothing was downloaded.
+const downloadInvoicePdf = async (page: Page, accountId: string, invoiceId: string) => {
+    await page.goto(`/customers/${accountId}/bills`);
+
+    const invoiceButton = page.getByRole('row').filter({ hasText: invoiceId }).first().getByRole('button', { name: invoiceId, exact: true });
+    await invoiceButton.click({ timeout: 15000 });
+
+    const downloadButton = page.getByRole('button', { name: 'Download', exact: true });
+
+    // isVisible() does not wait; waitFor does
+    if (!(await downloadButton.waitFor({ state: 'visible', timeout: 30000 }).then(() => true, () => false))) {
+        console.log(`No Download button on /invoices/${invoiceId}`);
+        return undefined;
+    }
+
+    const download = page.waitForEvent('download', { timeout: 30000 }).catch(() => undefined);
+    await downloadButton.click();
+    const file = await download;
+
+    if (!file) {
+        console.log('Download did not start');
+        return undefined;
+    }
+
+    const target = path.join(PDF_FOLDERS[0], file.suggestedFilename());
+    fs.mkdirSync(PDF_FOLDERS[0], { recursive: true });
+    await file.saveAs(target);
+    console.log(`PASS: Invoice PDF downloaded to ${target}`);
+
+    return target;
 };
 
 const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (data: Buffer) => Promise<{ text: string }>;
@@ -98,9 +131,9 @@ test('790115 TC-14 - invoice PDF total and 911 / Cruz Roja match Embrix', async 
     console.log(`TELEFONIA VOIP lines: ${embrix.voipLines} | Sheet expects 1: ${embrix.voipLines === 1 ? 'MATCH' : 'DIFFERS (EFT-97)'}`);
     console.log('================================================');
 
-    // 3. PDF SIDE: manual download (PDF_PATH) or the PDF Embrix stored
+    // 3. PDF SIDE: PDF_PATH, else download from the invoice page, else a local file, else the PDF Embrix stored
     let pdfBuffer: Buffer | null = null;
-    const pdfPath = process.env.PDF_PATH ?? findInvoicePdf(invoice.invoiceId);
+    const pdfPath = process.env.PDF_PATH ?? (await downloadInvoicePdf(page, accountId, invoice.invoiceId)) ?? findInvoicePdf(invoice.invoiceId);
 
     if (pdfPath) {
         pdfBuffer = fs.readFileSync(pdfPath);
@@ -111,7 +144,7 @@ test('790115 TC-14 - invoice PDF total and 911 / Cruz Roja match Embrix', async 
     }
 
     if (!pdfBuffer) {
-        console.log(`No PDF: Embrix did not store one for ${invoice.invoiceId}. Download it from the UI into test-data/invoices/ or ~/Downloads and rerun with INVOICE_ID=${invoice.invoiceId}.`);
+        console.log(`No PDF for ${invoice.invoiceId}: the download failed, no local file and Embrix did not store one. Save it into test-data/invoices/ and rerun with INVOICE_ID=${invoice.invoiceId}.`);
         return;
     }
 

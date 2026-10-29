@@ -3,7 +3,7 @@ import { normalizeDate, endOfMonth } from './dates';
 
 // AR Hub > Collections > account > View. Reads the action rows of the collection unit.
 
-export const COLLECTION_ACTIONS = ['COLLECTION_ENTRY', 'FIRST_REMINDER_EMAIL', 'INACTIVATE_SUBSCRIPTION', 'NOTIFY_CANCELLATION_TO_CRM'] as const;
+export const COLLECTION_ACTIONS = ['COLLECTION_ENTRY', 'FIRST_REMINDER_EMAIL', 'SECOND_REMINDER_EMAIL', 'INACTIVATE_SUBSCRIPTION', 'NOTIFY_CANCELLATION_TO_CRM'] as const;
 
 export type CollectionAction = (typeof COLLECTION_ACTIONS)[number];
 
