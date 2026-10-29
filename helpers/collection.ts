@@ -93,21 +93,41 @@ export const expectCollectionAction = async (page: Page, accountId: string, acti
 
 // Collections screen > tick the unit > Collection Unit Status = GRACE_PERIOD_REQUESTED > days > note > Apply.
 // `suspensionDate` is the INACTIVATE_SUBSCRIPTION date shown for the unit (used to pick the row).
-export const applyGracePeriod = async (page: Page, accountId: string, suspensionDate: string, gracePeriodDays: number) => {
-    const action = await getCollectionAction(page, accountId, { actions: ['INACTIVATE_SUBSCRIPTION'], minimumDate: suspensionDate, maximumDate: suspensionDate });
-    expect(action.nextActionDate).toBe(suspensionDate);
+// The unit is picked by its invoice: units of paid invoices stay on the page as CLOSED with their
+// last planned action, and a CLOSED unit cannot be changed (Apply stays disabled).
+export const applyGracePeriod = async (page: Page, accountId: string, invoiceId: string, gracePeriodDays: number) => {
+    if (!(await openCollection(page, accountId))) throw new Error(`No collection units shown for account ${accountId}`);
 
-    const collectionUnitRow = page.locator('.col-md-12 > #scrollableDiv > .table > tbody > tr').filter({ hasText: suspensionDate }).first();
-    await expect(collectionUnitRow).toBeVisible();
+    const collectionUnitRow = page.locator('.col-md-12 > #scrollableDiv > .table > tbody > tr').filter({ hasText: invoiceId }).first();
+    await expect(collectionUnitRow, `No collection unit for invoice ${invoiceId}`).toBeVisible();
+
+    console.log(`Collection unit of ${invoiceId}: ${(await collectionUnitRow.innerText()).replace(/\s+/g, ' ').trim()}`);
+
     await collectionUnitRow.locator('.custom-control').click();
 
     const statusSelect = page.locator('.form-group.select-group.col-md-4').filter({ hasText: 'Collection Unit Status' });
     await expect(statusSelect).toBeVisible();
-    await statusSelect.click();
 
-    const gracePeriodOption = page.locator('div[id^="react-select-"][id*="-option-"]').filter({ hasText: /^GRACE_PERIOD_REQUESTED$/ });
-    await expect(gracePeriodOption).toBeVisible();
-    await gracePeriodOption.click();
+    // The react-select sometimes closes before the option click registers (seen on TC-23 scenario B:
+    // Apply stayed disabled). Open it, pick the option and check the control shows it; retry if not.
+    const selectGracePeriod = async () => {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            await statusSelect.click();
+
+            const gracePeriodOption = page.locator('div[id^="react-select-"][id*="-option-"]').filter({ hasText: /^GRACE_PERIOD_REQUESTED$/ });
+            await expect(gracePeriodOption).toBeVisible();
+            await gracePeriodOption.click();
+            await page.waitForTimeout(500);
+
+            if (await statusSelect.filter({ hasText: 'GRACE_PERIOD_REQUESTED' }).isVisible().catch(() => false)) return;
+
+            console.log(`WARNING: Collection Unit Status does not show GRACE_PERIOD_REQUESTED (attempt ${attempt}/3)`);
+        }
+
+        throw new Error('Could not select GRACE_PERIOD_REQUESTED in Collection Unit Status');
+    };
+
+    await selectGracePeriod();
 
     await page.getByText('Grace Period', { exact: true }).click();
 
@@ -117,10 +137,38 @@ export const applyGracePeriod = async (page: Page, accountId: string, suspension
 
     const commentBox = page.locator('textarea:visible').first();
     await expect(commentBox).toBeVisible();
-    await commentBox.fill(`Grace period requested for ${gracePeriodDays} days from ${suspensionDate}`);
-    await page.getByRole('button', { name: 'Apply' }).click();
+    await commentBox.fill(`Grace period requested for ${gracePeriodDays} days on invoice ${invoiceId}`);
 
-    console.log(`PASS: ${gracePeriodDays}-day grace period requested for suspension date ${suspensionDate}`);
+    const applyButton = page.getByRole('button', { name: 'Apply' });
+
+    if (!(await applyButton.isEnabled().catch(() => false))) {
+        console.log('WARNING: Apply is disabled after filling the form; selecting the status again');
+        await selectGracePeriod();
+    }
+
+    await expect(applyButton, 'Apply stayed disabled: status, grace days or comment not accepted by the form').toBeEnabled({ timeout: 10000 });
+    await applyButton.click();
+
+    console.log(`PASS: ${gracePeriodDays}-day grace period requested on invoice ${invoiceId}`);
+};
+
+export type CollectionUnitRow = { invoiceId: string; status: string; action: string; nextActionDate: string; lastActionDate: string; text: string };
+
+// The unit row of one invoice in the Collections table (status, next action and its date), or undefined.
+export const readCollectionUnit = async (page: Page, accountId: string, invoiceId: string): Promise<CollectionUnitRow | undefined> => {
+    if (!(await openCollection(page, accountId))) return undefined;
+
+    const row = page.locator('.col-md-12 > #scrollableDiv > .table > tbody > tr').filter({ hasText: invoiceId }).first();
+
+    if (!(await row.isVisible().catch(() => false))) return undefined;
+
+    const text = (await row.innerText()).replace(/\s+/g, ' ').trim();
+    // "... VIEW 418817 CLOSED REGULAR <last action date> <next action date> INACTIVATE_SUBSCRIPTION <entry date> ..."
+    const stamp = '(\\d{4}-\\d{2}-\\d{2}) \\d{2}:\\d{2}:\\d{2}\\.\\d';
+    const next = text.match(new RegExp(`${stamp} ${stamp} (${COLLECTION_ACTIONS.join('|')})\\b`));
+    const status = text.match(new RegExp(`${invoiceId} (\\w+)`))?.[1] ?? '';
+
+    return { invoiceId, status, action: next?.[3] ?? '', nextActionDate: next?.[2] ?? '', lastActionDate: next?.[1] ?? '', text };
 };
 
 // ============================================================

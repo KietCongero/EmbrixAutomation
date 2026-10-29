@@ -192,6 +192,40 @@ export const q18PriceUnits = (accountId: string) =>
         [accountId]
     );
 
+export type InvoiceLine = { index: number; name: string; itemid: string; quantity: string | number; amount: string | number; taxcode: string };
+export type InvoiceTaxLine = { index: number; taxcategory: string; taxcode: string; taxableamount: string | number; taxrate: string | number; amount: string | number; itemid: string };
+export type InvoiceTotals = { total: string | number; due: string | number; summarysubtotal: string | number; taxsubtotal: string | number; balance: string | number | null; pdfbase64: string | null };
+
+// Q19 - Invoice lines as printed on the invoice (TC-14: one TELEFONIA VOIP line expected)
+export const q19InvoiceLines = (invoiceId: string) =>
+    queryDatabase<InvoiceLine>(
+        `SELECT index, name, itemid, quantity, amount, taxcode FROM core_engine.invoice_summary WHERE id = $1 ORDER BY index`,
+        [invoiceId]
+    );
+
+// Q20 - Tax Lines of the invoice (911, CR = Cruz Roja, IVA)
+export const q20InvoiceTaxLines = (invoiceId: string) =>
+    queryDatabase<InvoiceTaxLine>(
+        `SELECT index, taxcategory, taxcode, taxableamount, taxrate, amount, itemid FROM core_engine.invoice_tax WHERE id = $1 ORDER BY index`,
+        [invoiceId]
+    );
+
+// Q21 - Invoice totals, the account balance and the stored PDF (null when Embrix did not keep it)
+export const q21InvoiceTotals = async (invoiceId: string) => {
+    const [row] = await queryDatabase<InvoiceTotals>(
+        `
+    SELECT iu.total, iu.due, st.summarysubtotal, st.taxsubtotal, bub.amount AS balance, iu.invoicebase64pdf AS pdfbase64
+    FROM core_engine.invoice_unit iu
+    LEFT JOIN core_engine.invoice_summary_total st ON st.id = iu.id
+    LEFT JOIN core_engine.balance_unit bu ON bu.accountid = iu.accountid
+    LEFT JOIN core_engine.balance_unit_balances bub ON bub.id = bu.id
+    WHERE iu.id = $1
+  `,
+        [invoiceId]
+    );
+    return row;
+};
+
 // Postgres returns dates as Date objects and numerics as strings; these normalise them for asserts.
 export const dateOf = (value: Date | string | null | undefined) => {
     if (!value) return '';

@@ -12,7 +12,8 @@
     "@playwright/test": "^1.61.1",
     "@types/node": "^26.1.1",
     "@types/pg": "^8.20.3",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "pdf-parse": "^1.1.1"
   },
   "allowScripts": {
     "@types/node@26.1.1": true,
