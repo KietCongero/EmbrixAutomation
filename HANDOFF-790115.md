@@ -1,4 +1,4 @@
-# Handoff: 790115 test-case automation (as of 2026-10-27)
+# Handoff: 790115 test-case automation (as of 2026-10-28)
 
 Repo `/Users/dom/Documents/Code/Playwright`, branch `test-790115` (not pushed). Commits: fda13be helpers + plan, 4466113 Tier A, acde414 Tier B, 39dcd0b TC-02, bf1668c TC-04 + TC-22.
 Read first: `INSTRUCTIONS-790115.md` (owner's rules, win over everything), `TEST-PLAN-790115.md` (plan, status, run log, open points), README sections "790115 test cases" and "Shared helpers".
@@ -12,7 +12,7 @@ Read first: `INSTRUCTIONS-790115.md` (owner's rules, win over everything), `TEST
 - Provisioning is faked in the DB (no Nokia): `UPDATE order_prov_sequence_list SET status='COMPLETED'` (test-11's form, not test-1's fixed list). Fake ONT `ALCLB3A97FBA / G-240W-G` from `config/environments.ts`.
 
 ## Environment state
-- demo, sandbox CCP date now **2069-09-22**. Accounts: 9000263 (Tier A+B account, **cancelled/CLOSED**), 9000264 (TC-02 throwaway, incomplete unprovisioned order, harmless), **9000265** (TC-04/TC-22 account, SUSPENDED, invoice 418810 open due 2069-08-30, holds the fake ONT). `test-data/last-run/demo.json` → 9000265.
+- demo, sandbox CCP date now **2070-02-01**. Accounts: 9000263 (Tier A+B), 9000265 (TC-04/TC-22), 9000266 (TC-01 rerun), 9000267 (TC-03 run 1) are all **cancelled/CLOSED**; 9000264 (TC-02 throwaway, incomplete unprovisioned order, harmless); **9000268** (TC-03 run 2, ACTIVE, invoice 418817 open due 2070-02-18, holds the fake ONT). `test-data/last-run/demo.json` → 9000268.
 - Package `PKG_INT_NA_TV_VOIP_100MBPS`: INTERNET `BDL_INT_NA_100MBPS_TVE`, IPTV `TV_ESTANDAR` (its price offer id is literally `TV_ESTANDARTV ESTANDAR`), VOIP `BDL_VOIP`. Template `test-data/tc790115-account.json`; `tc790115-04-account.json` = same with `identityDocument: "CEDULA DE IDENTIDAD"` (no accent). Wizard INTERNET row label: `NA INTERNET 100 MBPS DUO TVE`.
 - Demo already applies **EFT-102**: suspension on the 21st (weekday or weekend), notice = suspension + 1. Due dates are on the 18th (NET_18).
 
@@ -23,6 +23,8 @@ ui (login, openAccount, openServices by href, verifyServiceStatus), ccp (runGrap
 | Sheet case | Spec | Copied from | Run / measures taken |
 | --- | --- | --- | --- |
 | TC-01 | `tests/test-790115.spec.ts` | test-11 | Passed (9000263, 9000265). Owner fixed v1: test-1 provisioning list left STB/VOIP steps PENDING; DB ONT check removed; Q02–Q05 asserts removed; `openServices` strict-mode clash with "Billable Services" fixed by href. |
+| TC-01-B | `TC790115-01B-OrderBeforeFirst.spec.ts` | TC-01 step for step | Passed (9000267). Only the dates differ from TC-01: step 0 logs in and moves the CCP off a 1st (order date = CCP, confirmed in `core_oms."order".createddate`), step 4B moves the CCP to the day after the next 1st before provisioning. Step 3's `login` lives in step 0 (the helper can't log in twice). Replaces TC-01 for the TC-03 account. |
+| TC-03 (EFT-99) | `TC790115-03-FirstBillAtActivation.spec.ts` | TC-05 billing step | Passed twice. 9000267: order 2069-10-02, activation 2069-11-02, first bill **2069-11-02 → 2069-12-01**, 29 of 30 days, total 24,293.08 (= 25,130.76 × 29/30), invoice 418816 due 2069-12-18. 9000268: order 2069-12-02, activation 2070-01-02, bill 2070-01-02 → 2070-02-01, 30 of 31 days, 24,320.11, invoice 418817 due 2070-02-18. Fix on sandbox confirmed. Guard: refuses to move the CCP back if the first bill ended before activation (the bug case). |
 | TC-02 | `TC790115-02-DuplicateOnt.spec.ts` | TC-01 wizard, no stale-row rename | Passed: Create rejected "duplicate key value: ProvisioningId already exist in service_provision". Restores last-run file after creating the throwaway account. |
 | TC-04 | `TC790115-04-IdentityDocument.spec.ts` | TC-01 steps + billing + Contact fix + Reprocess | Passed on 9000265: INVOICE_CHECK ERROR "receptor identificacion DIMEX debe contener 10 digitos"; fix on `/customers/<id>/contacts` (textbox after "Identity Document", button Modify); Reprocess button exists when a job is in ERROR; invoice 418810. |
 | TC-05 | `TC790115-05-Billing.spec.ts` | TC05 | Passed: due day 18. Runs one cycle; run it as often as needed. |
@@ -36,6 +38,7 @@ ui (login, openAccount, openServices by href, verifyServiceStatus), ccp (runGrap
 | TC-21 | `TC790115-21-Suspension21stWeekend.spec.ts` | same, pays months until a weekend 21st | Passed: paid May, June; July invoice suspended Sun 07-21, notice 07-22; entry on the due date. |
 | TC-22 | `TC790115-22-DueDate20Plus.spec.ts` | TC10 EXTEND_DUE_DATE, then drives by the unit's planned actions | Passed on 2nd run: entry showed after 08-31 (reminder 09-01, differs), suspension Sat 09-21 (21st of the next month), notice 09-22. v1 assumed the sheet's day sequence and failed on a missing 09-21 schedule. |
 | Suite | `TS790115.spec.ts` | runner | TC-01 → 05 → 06-08 → 09 → 10 → 15 (never run as a suite). |
+| Suite | `TS790115-TC03.spec.ts` | runner | TC-01-B → TC-03 on its own account (run twice as a suite, passed both times). |
 
 ## Findings to raise with the devs
 1. applyPayment with 2–3 allocations reports `deadlock detected` on `balance_unit_balances` for one allocation while applying it (retry answers "Invoice due already paid"). The sheet's R03 is a 2-invoice request.
@@ -44,10 +47,10 @@ ui (login, openAccount, openServices by href, verifyServiceStatus), ccp (runGrap
 4. RESUME order ORD-40096/40099 duplicates were created by payment retries (cancelled later with the account).
 
 ## Not done / needs a decision
-- **Tier C**: TC-03 (needs a Coopeweb order with back-dated effective date; API accounts can't), TC-14 (PDF download + parsing, no lib installed; Tax Lines UI), TC-23 (3 NORMAL accounts, grace via `applyGracePeriod`; blocked: engine commit not on sandbox, rule unconfirmed), TC-24/25 (ESPECIAL collection profile account; payload value unknown; blocked on Huy/Coope).
+- **Tier C**: TC-03 is done (Path B above: the order date is the CCP time, so TC-01-B back-dates the order by moving the CCP between Create and provisioning; Huy's other cases G = activated on the 1st and F = same period are not automated), TC-14 (PDF download + parsing, no lib installed; Tax Lines UI), TC-23 (3 NORMAL accounts, grace via `applyGracePeriod`; blocked: engine commit not on sandbox, rule unconfirmed), TC-24/25 (ESPECIAL collection profile account; payload value unknown; blocked on Huy/Coope).
 - **Verification not automated (by rule, ask before adding)**: Customer Activity / Nokia request (TC-01), Q-asserts in general, Invoice Details lines and Tax Lines (TC-11, TC-14), Basic Settings threshold and Billing Data › Transactions adjustment (TC-12/13), Q13 jobid match (TC-06), email table Q14. The sheet's SQL is available as functions in `helpers/queries.ts` if the owner wants them.
 - TC-05's "three billing runs" check is done by running the spec per cycle; TC-11 proration should be re-run with a mid-month reconnection.
-- Next run on a fresh account needs the manual ONT check, then `CANCEL_ACCOUNT_ID=9000265 npx playwright test tests/cancel.spec.ts`.
+- Next run on a fresh account needs the manual ONT check, then `CANCEL_ACCOUNT_ID=9000268 npx playwright test tests/cancel.spec.ts`.
 
 ## Commands
 `npx playwright test tests/<spec> --project=chromium --workers=1 --headed` (one at a time); `ACCOUNT_ID=9000265 npx playwright test TC790115-09`; type-check `npx -y -p typescript@5.9.3 tsc --noEmit -p tsconfig.json`.
